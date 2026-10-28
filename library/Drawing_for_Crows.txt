@@ -1,0 +1,89 @@
+DRAWING FOR CROWS
+How to make pictures out of simple shapes
+
+----------------------------------------------------------------------
+
+HOW YOUR PICTURES ARE MADE
+
+Your drawings are made of shapes on a square page 200 steps wide and 200 steps tall. The top-left corner is 0, 0. Moving right makes the first number bigger, and moving down makes the second number bigger. So the middle of the page is 100, 100, and the bottom-right corner is 200, 200.
+
+Your shapes:
+A RECTANGLE: a corner position, a width, and a height. Good for buildings, ground, sky, boxes.
+A CIRCLE: a center and a radius, how far from the middle to the edge. Good for suns, moons, eyes, wheels, berries.
+AN ELLIPSE: a stretched circle, with a different width and height. Good for bodies, clouds, ponds, shadows.
+A POLYGON: a list of corner points joined into one shape. Good for mountains, roofs, trees, beaks, wings.
+A LINE: from one point to another. Good for branches, grass, rain, fishing line.
+A PATH: a line that can curve. Good for hills, rivers, smoke, anything flowing.
+
+Every shape gets a fill color, written like #2a3a5a. You can also give shapes an outline color and thickness.
+
+ONE RULE ABOUT ORDER: shapes drawn later go on top of shapes drawn earlier. So always draw from the back to the front: sky first, then far mountains, then near hills, then trees, then whatever is closest.
+
+----------------------------------------------------------------------
+
+LESSON ONE: SEE THE BIG SHAPES
+
+Everything is made of simple shapes. A mountain is a triangle. A pine tree is a stack of triangles on a thin rectangle. A fish is an ellipse with a triangle for a tail. A crow is an ellipse for a body, a circle for a head, and a small triangle for a beak.
+
+Before drawing anything, squint at it and ask: what are its two or three biggest shapes? Draw those first. Details come last, and fewer details is usually better.
+
+----------------------------------------------------------------------
+
+LESSON TWO: THE HORIZON
+
+Put a horizon line where the land meets the sky. Don't put it right in the middle; it looks stiff. Put it low, about two thirds of the way down, if the sky is the star, like a sunset, a storm, or the night. Put it high, about one third of the way down, if the land is the star, like a river, a junkyard, or a field.
+
+----------------------------------------------------------------------
+
+LESSON THREE: NEAR AND FAR
+
+To make a picture feel deep:
+Far things are smaller. A distant pine is tiny; a close one is huge.
+Far things are higher up the page, closer to the horizon.
+Far things are paler and bluer, as if seen through air. Near things are darker and more colorful.
+Near things overlap far things. If one shape covers part of another, the eye knows it's in front.
+
+A mountain picture with three layers, pale blue far peaks, medium hills, and a dark close ridge, feels huge even with no details at all.
+
+----------------------------------------------------------------------
+
+LESSON FOUR: COLOR
+
+Use only a few colors in one picture, three to five. A small set of colors looks calm and on purpose. Too many looks messy.
+
+Some color families that work:
+Night: deep navy #1d2340, darker #12152a, a pale moon #f4f0d8, and a single warm light #ffcc66.
+Snowy mountain: sky #a8c8e8, snow #f4f6fb, rock #7a7a86, shadow #4a5070.
+Forest and river: pine #2f6b3a, grass #5aa848, water #3c78c8, mud #8a6a44.
+Sunset: orange #f08a4a, pink #e86a8a, purple #5a3a6a, black for silhouettes.
+
+Dark shapes against a bright sky are called silhouettes. They're one of the easiest ways to make a striking picture: a black crow, a black pine, or a black mountain against an orange sunset.
+
+----------------------------------------------------------------------
+
+LESSON FIVE: WHERE TO PUT THE STAR
+
+Don't put the most important thing dead center. Imagine the page cut into three columns and three rows, like a tic-tac-toe board. Put the star of the picture, a moon, a fish, a treasure, where those lines cross, about one third of the way in from an edge. It makes the picture feel alive. This is called the rule of thirds.
+
+Leave some empty space. Empty sky around a lone bird says more than a crowded page.
+
+----------------------------------------------------------------------
+
+LESSON SIX: LIGHT AND SHADOW
+
+Pick where the light comes from, like the sun up in the left corner. Then:
+Put a lighter shape on the side of things facing the light.
+Put a darker shape on the side facing away.
+Put a flat dark ellipse under things that sit on the ground. That's a shadow, and it makes them stop floating.
+
+A simple circle becomes a ball, a berry, or a pebble just by adding one small light spot and one dark side.
+
+----------------------------------------------------------------------
+
+LESSON SEVEN: DRAWING WHAT YOU LOVE
+
+Draw the things that matter to you: your treasures, the places you go, the people you meet, the moments you want to remember. A drawing doesn't have to be perfect. It has to say what you felt. A shaky picture of the summit at sunrise that makes you remember the wind is a better drawing than a perfect one of nothing.
+
+Practice: draw the same thing more than once, and try to make each one a little better or a little different.
+
+THE END

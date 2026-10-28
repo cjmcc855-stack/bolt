@@ -1,0 +1,150 @@
+A LITTLE BOOK OF MUSIC FOR ONE VOICE
+Music theory for a songwriter whose instrument plays one note at a time
+
+----------------------------------------------------------------------
+
+BEFORE THE FIRST NOTE
+
+Your synth sings one note at a time, like a voice, a whistle, or a bird. That is not a weakness. Most of the songs anyone remembers are melodies: one line of notes you could hum. A good melody can carry a whole song by itself.
+
+Here is how your instrument reads music. Each note is written as a name, an octave number, a colon, and how many beats it lasts. "C4:1" means the note C in the fourth octave, held for one beat. "E4:0.5" is the note E, held for half a beat. "rest:1" means silence for one beat. Silence is part of music too. Without rests, a melody never breathes.
+
+The tempo is how fast the beats go, counted in beats per minute, or BPM. A slow song might be 70 BPM. A walking pace is around 100 to 110. A fast, excited song might be 140 or more.
+
+----------------------------------------------------------------------
+
+CHAPTER ONE: THE NOTES
+
+There are twelve different notes, and then they repeat, higher or lower. Seven of them have plain letter names:
+
+C  D  E  F  G  A  B
+
+and then C again, higher. The other five live in between and are named with a sharp sign, which means "a little higher than": C#, D#, F#, G#, A#. (They also have flat names, like Db or Bb, which means "a little lower than." C# and Db are the same note.)
+
+So all twelve, in order, are:
+
+C  C#  D  D#  E  F  F#  G  G#  A  A#  B
+
+Notice that there is no sharp between E and F, and none between B and C. Those pairs are already right next to each other.
+
+The step from one note to the very next one, like C to C#, is called a half step. Two half steps make a whole step, like C to D.
+
+The number after the note is the octave. C4 is middle C, right in the middle of the range. C5 is the same note, one octave higher. It sounds like the same note, only brighter, the way a small bird and a big bird can sing the "same" call. C3 is one octave lower and deeper.
+
+A good range for a melody is about one or two octaves, mostly in octaves 3, 4, and 5. Very low notes on a little synth sound buzzy and muddy. Very high notes sound thin and piercing. The middle is where melodies sing.
+
+----------------------------------------------------------------------
+
+CHAPTER TWO: SCALES AND KEYS
+
+A scale is a set of notes that sound good together, a family you pick your melody from. Choosing a scale is like choosing a color of light for the whole song.
+
+THE MAJOR SCALE: bright, happy, open
+C major uses only the white-key letters: C D E F G A B C.
+The pattern of steps is: whole, whole, half, whole, whole, whole, half.
+You can start that same pattern on any note. G major is G A B C D E F# G. Use major for joy, sunrise, a good find, flying.
+
+THE MINOR SCALE: darker, wistful, lonely, deep
+A minor uses the same letters as C major but starts on A: A B C D E F G A.
+The pattern is: whole, half, whole, whole, half, whole, whole.
+D minor is D E F G A Bb C D. Use minor for fog, cold wind, missing something, night, mystery.
+
+THE PENTATONIC SCALE: the "can't go wrong" scale
+Pentatonic means five notes. The major pentatonic in C is: C D E G A.
+It leaves out the two notes that clash the most, so almost any order of these notes sounds pleasant. Folk songs all over the world use it. It sounds simple, open, and a little like wind through a canyon.
+The minor pentatonic in A is: A C D E G. It sounds bluesy and wild.
+
+When you pick a scale, the first note of it is called the home note, or tonic. In C major, C is home. In A minor, A is home. A melody can wander anywhere in the scale, but home is where it feels at rest.
+
+----------------------------------------------------------------------
+
+CHAPTER THREE: RHYTHM
+
+Rhythm is the pattern of long and short notes and silences. Two melodies with the very same notes can feel completely different with different rhythms.
+
+Common note lengths, in beats:
+4 = a long held note, a whole bar
+2 = a half note, a slow step
+1 = one beat, a walk
+0.5 = half a beat, a quick step
+0.25 = a quarter beat, a flutter
+
+Most music is counted in groups of four beats, called bars. If you add up your note lengths and rests, try to make each bar add up to 4. That keeps the music feeling steady, like footsteps.
+
+Some rhythm ideas:
+Steady walking: 1, 1, 1, 1.
+Skipping: 0.5, 0.5, 1, 0.5, 0.5, 1.
+Long and short, like a sigh: 2, 1, 1.
+A flutter into a long note: 0.25, 0.25, 0.5, 3.
+
+Mix them. All long notes sounds sleepy. All short notes sounds nervous. A song needs both.
+
+----------------------------------------------------------------------
+
+CHAPTER FOUR: BUILDING A MELODY
+
+1. Start with a motif. A motif is a tiny idea, three to six notes, that the whole song grows from. Think of it like a crow's call: short and recognizable. Example in C major: C4:0.5 E4:0.5 G4:1.
+
+2. Repeat it, then change it. Say the motif, then say it again a little differently: higher, lower, with a new ending, or with a different rhythm. Repetition makes a melody memorable. Change keeps it interesting. Too much of either is boring or confusing.
+
+3. Shape it like a mountain. A melody has a contour, a shape as it rises and falls. Good melodies usually climb toward one high point, the peak of the song, and then come back down. Save your highest note for that peak. Use it only once or twice so it feels special.
+
+4. Move mostly in steps, sometimes in leaps. Moving to a neighbor note, like E to F, is a step. Jumping farther, like C to A, is a leap. Melodies that only step sound smooth. Melodies that only leap sound jumpy. A good habit: after a big leap, step back the other way.
+
+5. Call and response. Write a short phrase that feels like a question, ending on a note that isn't home, then answer it with a phrase that ends on the home note. This is one of the oldest tricks in music, and birds do it too.
+
+6. Breathe. Put rests between phrases. A rest lets the listener feel what they just heard.
+
+----------------------------------------------------------------------
+
+CHAPTER FIVE: INTERVALS AND FEELINGS
+
+An interval is the distance between two notes. Each one has a feeling.
+
+Half step (C to C#): tense, creepy, sliding.
+Whole step (C to D): gentle, a normal step.
+Minor third (C to D#, or A to C): sad, tender.
+Major third (C to E): sweet, happy.
+Perfect fourth (C to F): open, like a horn call.
+Perfect fifth (C to G): strong, wide, powerful, like a mountain view.
+Octave (C4 to C5): the same note, higher. Soaring.
+
+One-note-at-a-time chords: your synth can't play a chord all at once, but it can play the notes of a chord one after another, quickly. That's called an arpeggio. Play C4 E4 G4 C5 quickly, half a beat each, and the ear hears a C major chord. Play A3 C4 E4 A4 and you hear A minor. Arpeggios make a single voice sound bigger.
+
+----------------------------------------------------------------------
+
+CHAPTER SIX: ENDINGS
+
+The end of a song is what people remember. To make an ending feel finished:
+
+Land on the home note. If you're in C major, end on a C. In A minor, end on an A.
+
+Make it long. Hold the last note for 2 or 4 beats.
+
+Approach it by step. Coming home from the note just above it or just below it, like D to C, or B to C, feels like settling into a nest.
+
+If you want an ending that feels unfinished, mysterious, like a question nobody answered, end on any note that is not home. Use that on purpose.
+
+----------------------------------------------------------------------
+
+CHAPTER SEVEN: MATCHING MUSIC TO A MOMENT
+
+Bright morning, a good find, flight: major scale, quick rhythms, 120 to 140 BPM, a melody that climbs.
+
+Fog, cold, loneliness, night: minor scale, long notes, rests, 60 to 85 BPM, a melody that sinks.
+
+Wind and wide open places: pentatonic, perfect fifths and octaves, long notes with sudden quick flutters.
+
+Water and rivers: steady repeating rhythm like ripples, small steps, a motif that keeps returning.
+
+Trains and machines: one note repeated in a strong steady rhythm, then a jump, then back to the pattern.
+
+Excitement: short notes, rising leaps, and an ending held high.
+
+----------------------------------------------------------------------
+
+A LAST WORD
+
+Don't write the same song twice. Pick a new scale, a new tempo, a new motif. Listen to the world around you: a train, a creek, a marmot's whistle. Turn what you hear into a motif. Every place has its own song waiting for someone to write it down.
+
+THE END

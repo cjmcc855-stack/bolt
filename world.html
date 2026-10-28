@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Bolt's World</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1d2333; --panel: #f8f4e3; --ink: #2a2a3a; --edge: #3c4a6b; --edge2: #8fa3c8;
+    --hp: #48c060; --hp-mid: #e8c040; --hp-low: #e05038; --accent: #d85a3a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font-family: "Press Start 2P", ui-monospace, monospace; font-size: 10px; line-height: 1.7;
+         display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 10px 10px 90px; }
+  .wrap { width: 100%; max-width: 980px; }
+  .box { background: var(--panel); border: 4px solid var(--edge); border-radius: 6px;
+         box-shadow: inset 0 0 0 3px var(--edge2), 0 4px 0 #0008; padding: 10px 12px; }
+  header.box { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  h1 { font-size: 12px; margin: 0; letter-spacing: 1px; }
+  .stat { display: flex; align-items: center; gap: 6px; }
+  .bar { width: 90px; height: 8px; background: #555; border: 2px solid var(--ink); border-radius: 3px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--hp); transition: width .6s, background .6s; }
+  .meta { opacity: .75; }
+  .stage.zoom { overflow: auto; } .stage.zoom canvas { width: 220%; }
+  .stage { position: relative; width: 100%; border: 4px solid var(--edge); border-radius: 6px; overflow: hidden;
+           box-shadow: 0 4px 0 #0008; background: #000; }
+  canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; image-rendering: crisp-edges; cursor: pointer; touch-action: manipulation; }
+  .tag { position: absolute; pointer-events: none; transform: translate(-50%, -130%); background: #000c; color: #fff;
+         padding: 3px 6px; border-radius: 3px; font-size: 8px; white-space: nowrap; display: none; }
+  .dialog { margin-top: 8px; min-height: 72px; position: relative; }
+  .dialog .who { font-size: 9px; color: var(--accent); margin-bottom: 4px; }
+  .dialog p { margin: 0 0 4px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.45; }
+  .dialog .small { font-size: 12px; opacity: .8; }
+  .dialog .arrow { position: absolute; right: 12px; bottom: 6px; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .controls { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bg); padding: 8px 10px 10px; display: flex; justify-content: center; z-index: 5; }
+  .controls .inner { width: 100%; max-width: 980px; display: flex; gap: 6px; }
+  input[type=text] { flex: 1; min-width: 0; font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px;
+         padding: 9px 10px; border: 3px solid var(--edge); border-radius: 5px; background: var(--panel); color: var(--ink); }
+  button { font: inherit; font-size: 9px; padding: 9px 10px; border: 3px solid var(--edge); border-radius: 5px;
+           background: #e9e1c4; color: var(--ink); cursor: pointer; box-shadow: 0 3px 0 #0006; white-space: nowrap; }
+  button:active { transform: translateY(2px); box-shadow: 0 1px 0 #0006; }
+  button.go { background: #ffd866; }
+  .sheet { position: fixed; inset: 0; background: #0008; display: none; align-items: flex-end; justify-content: center; z-index: 10; padding: 10px; }
+  .sheet.open { display: flex; }
+  .sheet .box { width: 100%; max-width: 640px; max-height: 80vh; overflow: auto; margin-bottom: 70px; }
+  .sheet h2 { font-size: 11px; margin: 0 0 8px; }
+  .sheet .desc { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.45; margin: 0 0 10px; }
+  .row { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
+  .row input { flex: 1; }
+  ul.list { margin: 0; padding-left: 18px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; }
+  .gift { color: var(--accent); }
+  .songs li { margin: 6px 0; } .songs audio { width: 100%; height: 32px; margin-top: 2px; }
+  .close { float: right; }
+  @media (max-width: 520px) { button { padding: 9px 7px; font-size: 8px; } .controls .inner { gap: 4px; } }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+  .gallery figure { margin: 0; background: #fff; border: 3px solid var(--edge); border-radius: 4px; padding: 4px; }
+  .gallery img { width: 100%; aspect-ratio: 1; display: block; background: #fff; }
+  .gallery figcaption { font-size: 8px; margin-top: 4px; text-align: center; }
+  .toast { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); background: var(--panel); border: 3px solid var(--edge);
+           border-radius: 5px; padding: 8px 12px; z-index: 20; display: none; box-shadow: 0 3px 0 #0008; }
+  .offline { color: var(--hp-low); }
+  h3 { font-size: 9px; margin: 14px 0 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="box">
+    <h1>BOLT'S WORLD</h1>
+    <div class="stat">EN <div class="bar"><i id="en"></i></div></div>
+    <div class="stat">MOOD <div class="bar"><i id="md"></i></div></div>
+    <div class="meta" id="meta">connecting…</div>
+  </header>
+  <div class="stage" id="stage">
+    <canvas id="c" width="768" height="512"></canvas>
+    <div class="tag" id="tag"></div>
+  </div>
+  <div class="box dialog" id="dialog">
+    <div class="who" id="who">BOLT</div>
+    <p id="line1">…</p>
+    <p class="small" id="line2"></p>
+    <span class="arrow">▼</span>
+  </div>
+</div>
+
+<div class="controls"><div class="inner">
+  <input type="text" id="say" placeholder="Say something to Bolt…" maxlength="280" autocomplete="off">
+  <button class="go" id="sendBtn">TALK</button>
+  <button id="stashBtn">STASH</button>
+  <button id="songsBtn" title="Songs & drawings">♪ ART</button>
+  <button id="namesBtn" title="Show place names">ABC</button>
+  <button id="zoomBtn" title="Zoom">⌕</button>
+</div></div>
+
+<div class="sheet" id="placeSheet"><div class="box">
+  <button class="close" data-close>X</button>
+  <h2 id="pName"></h2>
+  <p class="desc" id="pDesc"></p>
+  <p class="desc" id="pShiny"></p>
+  <div class="row"><input type="text" id="pItem" placeholder="Leave something here… (he has to find it)" maxlength="120"><button class="go" id="pLeave">LEAVE</button></div>
+  <div class="row"><button id="pCall">CALL BOLT HERE</button></div>
+</div></div>
+
+<div class="sheet" id="stashSheet"><div class="box">
+  <button class="close" data-close>X</button>
+  <h2>BOLT'S STASH</h2>
+  <h3>ON HIS SHELF</h3>
+  <ul class="list" id="stashList"></ul>
+  <h3 id="hoardTitle">THE HOARD</h3>
+  <ul class="list" id="hoardList"></ul>
+  <h3>GIVE HIM SOMETHING NOW</h3>
+  <div class="row"><input type="text" id="giveItem" placeholder="a shiny spoon…" maxlength="120"><button class="go" id="giveBtn">GIVE</button></div>
+  <h3>SKILLS</h3><ul class="list" id="skillList"></ul>
+  <h3>RECORDS</h3><ul class="list" id="recordList"></ul>
+  <h3>BOOKS</h3><ul class="list" id="bookList"></ul>
+  <h3>WORDS HE LIKES</h3><p class="desc" id="wordList"></p>
+  <h3>THINGS HE'S LEARNED</h3><ul class="list" id="factList"></ul>
+  <h3 id="memTitle">MEMORY BOOK</h3><ul class="list" id="memList"></ul>
+  <h3>WHAT HE KNOWS ABOUT PEOPLE</h3><div id="peopleList" class="desc"></div>
+  <h3>WHO HE IS</h3><p class="desc" id="likes"></p>
+</div></div>
+
+<div class="sheet" id="songsSheet"><div class="box">
+  <button class="close" data-close>X</button>
+  <h2>BOLT'S SONGS</h2>
+  <ul class="list songs" id="songList"></ul>
+  <h3>HIS DRAWINGS</h3>
+  <div id="artList" class="gallery"></div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+// ======================= map =======================
+const T = 16, W = 48, H = 32;
+const cv = document.getElementById("c"), cx = cv.getContext("2d");
+cx.imageSmoothingEnabled = false;
+let seed = 7;
+const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const grid = Array.from({ length: H }, () => Array(W).fill("g"));
+const busy = Array.from({ length: H }, () => Array(W).fill(false));
+const set = (x, y, t) => { if (x >= 0 && y >= 0 && x < W && y < H) grid[y][x] = t; };
+const rect = (x0, y0, x1, y1, t) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) set(x, y, t); };
+const occupy = (x0, y0, x1, y1) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (busy[y]) busy[y][x] = true; };
+
+// mountain
+for (let y = 0; y <= 11; y++) {
+  const hw = 3 + y * 1.25, cxm = 24;
+  for (let x = Math.floor(cxm - hw); x <= Math.ceil(cxm + hw); x++) {
+    const edge = Math.abs(x - cxm) > hw - 1 && rnd() < .5;
+    set(x, y, edge ? "g" : "r");
+  }
+  if (y < 6) { const sw = 1.5 + y * 0.9; for (let x = Math.floor(cxm - sw); x <= Math.ceil(cxm + sw); x++) set(x, y, "s"); }
+}
+occupy(8, 0, 40, 11);
+// switchback trail up the mountain
+[[24,12],[24,11],[23,11],[22,11],[21,11],[21,10],[21,9],[22,9],[23,9],[24,9],[25,9],[26,9],[26,8],[26,7],[25,7],[24,7],[23,7],[22,7],[22,6],[22,5],[23,5],[24,5],[24,4],[24,3],[24,2]]
+  .forEach(([x, y]) => set(x, y, grid[y][x] === "s" ? "S" : "d"));
+// lake + river
+for (let y = 2; y <= 12; y++) for (let x = 34; x <= 47; x++) {
+  const d = ((x - 41) / 5.6) ** 2 + ((y - 7) / 3.8) ** 2;
+  if (d < 1) set(x, y, "w"); else if (d < 1.35) set(x, y, "m");
+}
+occupy(34, 2, 47, 12);
+let rx = 41;
+for (let y = 10; y < H; y++) {
+  rx += (rnd() < .35 ? 1 : rnd() < .25 ? -1 : 0); rx = Math.max(40, Math.min(45, rx));
+  set(rx - 1, y, "m"); set(rx, y, "w"); set(rx + 1, y, "w"); set(rx + 2, y, "m"); occupy(rx - 1, y, rx + 2, y);
+}
+// railway + rail yard
+for (let x = 0; x < W; x++) set(x, 20, grid[20][x] === "w" ? "b" : "t");
+for (const y of [18, 22]) for (let x = 29; x <= 38; x++) set(x, y, "t");
+for (const y of [19, 21]) for (let x = 29; x <= 38; x++) set(x, y, "q");
+occupy(0, 20, 47, 20); occupy(28, 17, 39, 23);
+// roads
+for (let x = 0; x <= 39; x++) set(x, 25, "d");
+for (let y = 12; y <= 25; y++) if (grid[y][24] !== "t") set(24, y, "d");
+for (let y = 7; y <= 25; y++) if (grid[y][7] !== "t") set(7, y, "d");
+for (let x = 7; x <= 24; x++) set(x, 12, "d");
+occupy(0, 25, 39, 25); occupy(24, 12, 24, 25); occupy(7, 7, 7, 25); occupy(7, 12, 24, 12);
+// drift lot, junkyard, concrete pads
+rect(1, 13, 12, 18, "a"); occupy(1, 13, 12, 18);
+rect(1, 27, 12, 31, "j"); occupy(0, 26, 13, 31);
+rect(29, 26, 36, 31, "c"); occupy(28, 26, 37, 31);
+rect(13, 21, 19, 24, "c"); rect(13, 26, 19, 31, "c"); occupy(13, 21, 19, 31);
+rect(20, 26, 27, 31, "c"); occupy(20, 26, 27, 31);
+// barn pasture
+rect(1, 1, 8, 7, "p"); occupy(0, 0, 9, 8);
+// house + shed
+occupy(13, 13, 21, 17);
+// nest tree spot
+occupy(22, 13, 26, 18);
+
+// ======================= tiles =======================
+const base = document.createElement("canvas"); base.width = W * T; base.height = H * T;
+const b = base.getContext("2d");
+const px = (g, x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
+function speckle(g, x0, y0, cols, n) { for (let i = 0; i < n; i++) px(g, x0 + (rnd() * T | 0), y0 + (rnd() * T | 0), 1, 1, cols[rnd() * cols.length | 0]); }
+const TILE = {
+  g(g, x, y) { px(g, x, y, T, T, "#5aa848"); speckle(g, x, y, ["#4c9a3e", "#68b854", "#4c9a3e"], 14);
+               if (rnd() < .18) { const a = x + 3 + (rnd() * 9 | 0), c = y + 4 + (rnd() * 8 | 0); px(g, a, c, 1, 2, "#3f8a34"); px(g, a + 2, c - 1, 1, 3, "#3f8a34"); }
+               if (rnd() < .05) { px(g, x + 6, y + 6, 2, 2, rnd() < .5 ? "#f4e36a" : "#f08aa8"); } },
+  p(g, x, y) { px(g, x, y, T, T, "#8cbf52"); speckle(g, x, y, ["#7cb046", "#9ccc60"], 12); },
+  d(g, x, y) { px(g, x, y, T, T, "#c9a46a"); speckle(g, x, y, ["#b8935c", "#d8b47a", "#a88350"], 16); },
+  S(g, x, y) { px(g, x, y, T, T, "#d8dce8"); speckle(g, x, y, ["#c4c8d8", "#b8a888"], 10); },
+  r(g, x, y) { px(g, x, y, T, T, "#8a8a96"); speckle(g, x, y, ["#7a7a86", "#9a9aa6", "#6c6c78"], 20);
+               if (rnd() < .4) { const a = x + (rnd() * 10 | 0), c = y + (rnd() * 10 | 0); px(g, a, c, 5, 1, "#62626e"); px(g, a + 4, c + 1, 1, 3, "#62626e"); } },
+  s(g, x, y) { px(g, x, y, T, T, "#f4f6fb"); speckle(g, x, y, ["#dce4f2", "#ffffff", "#cfd9ec"], 14); },
+  w(g, x, y) { px(g, x, y, T, T, "#3c78c8"); speckle(g, x, y, ["#3570bc", "#4686d4"], 10); },
+  m(g, x, y) { px(g, x, y, T, T, "#dcc890"); speckle(g, x, y, ["#ccb880", "#e8d8a4"], 12); },
+  a(g, x, y) { px(g, x, y, T, T, "#4a4a52"); speckle(g, x, y, ["#3e3e46", "#56565e", "#5e5e66"], 18); },
+  c(g, x, y) { px(g, x, y, T, T, "#b4b0a4"); speckle(g, x, y, ["#a8a498", "#c0bcb0"], 10); px(g, x, y + 15, T, 1, "#a09c90"); px(g, x + 15, y, 1, T, "#a09c90"); },
+  j(g, x, y) { px(g, x, y, T, T, "#9a8060"); speckle(g, x, y, ["#8a7050", "#aa9070", "#6a5a48", "#b07040"], 22); },
+  q(g, x, y) { px(g, x, y, T, T, "#9a9488"); speckle(g, x, y, ["#8a8478", "#aaa498", "#7a7468"], 26); },
+  t(g, x, y) { TILE.q(g, x, y); for (let i = 1; i < T; i += 4) px(g, x + i, y + 3, 2, 10, "#6a4a30"); px(g, x, y + 5, T, 2, "#c8c8d0"); px(g, x, y + 10, T, 2, "#c8c8d0"); px(g, x, y + 7, T, 1, "#80808a"); px(g, x, y + 12, T, 1, "#80808a"); },
+  b(g, x, y) { TILE.w(g, x, y); px(g, x, y + 2, T, 12, "#7a5a3a"); for (let i = 0; i < T; i += 4) px(g, x + i, y + 2, 1, 12, "#5a3a22"); px(g, x, y + 5, T, 2, "#c8c8d0"); px(g, x, y + 10, T, 2, "#c8c8d0"); },
+};
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) (TILE[grid[y][x]] || TILE.g)(b, x * T, y * T);
+// mountain shading: light from the west, shadowed east face, ragged snowline
+for (let y = 0; y <= 11; y++) for (let x = 8; x <= 40; x++) {
+  const t = grid[y][x];
+  if (t === "r" || t === "s" || t === "S" || (t === "d" && y < 12 && grid[y][x - 1] === "r")) {
+    if (x > 24) { b.globalAlpha = 0.18 + (x - 24) * 0.012; px(b, x * T, y * T, T, T, t === "s" ? "#6a7ab0" : "#1a1a2a"); b.globalAlpha = 1; }
+    else if (x < 23) { b.globalAlpha = 0.08; px(b, x * T, y * T, T, T, "#ffffff"); b.globalAlpha = 1; }
+  }
+  if (t === "s" && y < H - 1 && grid[y + 1][x] === "r") for (let i = 0; i < T; i += 3) px(b, x * T + i, (y + 1) * T, 2, 2 + (rnd() * 5 | 0), "#eef2fa");
+}
+// shoreline edges
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (grid[y][x] === "w") {
+  if (y > 0 && grid[y - 1][x] !== "w" && grid[y - 1][x] !== "b") px(b, x * T, y * T, T, 2, "#8cc4f0");
+}
+
+// ======================= objects =======================
+function pine(g, x, y, s = 1) {
+  px(g, x + 6 * s, y + 18 * s, 4 * s, 5 * s, "#6a4428");
+  const L = [[7, 0, 2], [5, 3, 6], [4, 6, 8], [2, 9, 12], [1, 12, 14], [0, 15, 16]];
+  L.forEach(([ox, oy, w]) => px(g, x + ox * s, y + oy * s, w * s, 3 * s, "#2f6b3a"));
+  L.forEach(([ox, oy, w]) => px(g, x + ox * s, y + oy * s, Math.max(1, (w / 3) | 0) * s, 3 * s, "#3e8a4a"));
+  px(g, x + 3 * s, y + 21 * s, 10 * s, 2 * s, "#0002");
+}
+function building(g, x, y, w, h, wall, roof, opt = {}) {
+  px(g, x + 2, y + h, w, 3, "#0003");
+  px(g, x, y + 8, w, h - 8, wall); px(g, x, y + h - 2, w, 2, "#0002");
+  px(g, x - 2, y, w + 4, 10, roof); px(g, x - 2, y + 8, w + 4, 2, "#0003");
+  for (let i = 0; i < w + 4; i += 4) px(g, x - 2 + i, y + 2, 2, 1, "#ffffff22");
+  (opt.windows || []).forEach(([wx, wy]) => { px(g, x + wx, y + wy, 6, 5, "#2a3a5a"); px(g, x + wx + 1, y + wy + 1, 2, 2, "#8ab4e8"); });
+  if (opt.door) { const [dx, dw] = opt.door; px(g, x + dx, y + h - 12, dw, 12, opt.doorColor || "#6a4428"); }
+}
+function car(g, x, y, col, rust) {
+  px(g, x + 1, y + 9, 22, 2, "#0004");
+  px(g, x, y + 3, 22, 6, col); px(g, x + 5, y, 12, 4, col); px(g, x + 6, y + 1, 4, 2, "#8ab4e8"); px(g, x + 11, y + 1, 4, 2, "#8ab4e8");
+  px(g, x + 3, y + 8, 4, 3, "#222"); px(g, x + 15, y + 8, 4, 3, "#222");
+  if (rust) for (let i = 0; i < 8; i++) px(g, x + (rnd() * 20 | 0), y + 3 + (rnd() * 5 | 0), 2, 1, "#a0582a");
+}
+function fence(g, x0, y0, x1, y1) {
+  for (let x = x0; x <= x1; x += 4) { px(g, x, y0, 2, 6, "#8a6a44"); px(g, x, y1, 2, 6, "#8a6a44"); }
+  for (let y = y0; y <= y1; y += 4) { px(g, x0, y, 2, 6, "#8a6a44"); px(g, x1, y, 2, 6, "#8a6a44"); }
+  px(g, x0, y0 + 2, x1 - x0, 1, "#a8885c"); px(g, x0, y1 + 2, x1 - x0, 1, "#a8885c");
+}
+// barn (old red barn, NW)
+building(b, 2 * T, 2 * T, 5 * T, 4 * T - 4, "#a83c30", "#5a3a2a", { door: [28, 24], doorColor: "#7a2a22" });
+px(b, 2 * T + 28, 2 * T + 44, 24, 12, "#7a2a22"); px(b, 2 * T + 28, 2 * T + 44, 24, 1, "#f0e8d8");
+for (let i = 0; i < 12; i++) { px(b, 2 * T + 28 + i * 2, 2 * T + 44 + i, 2, 1, "#f0e8d8"); px(b, 2 * T + 50 - i * 2, 2 * T + 44 + i, 2, 1, "#f0e8d8"); }
+px(b, 2 * T + 34, 2 * T + 12, 12, 8, "#f0e8d8"); px(b, 2 * T + 36, 2 * T + 14, 8, 4, "#3a2a20");
+fence(b, 1 * T, 1 * T, 8 * T + 8, 7 * T + 6);
+// drift lot: tire marks + light poles
+b.strokeStyle = "#2a2a30"; b.lineWidth = 2;
+for (let k = 0; k < 3; k++) { b.beginPath(); b.ellipse(6.5 * T, 15.5 * T, 3.6 * T - k * 6, 1.8 * T - k * 4, 0, 0, Math.PI * 2); b.stroke(); }
+for (const [x, y] of [[1, 13], [12, 13], [1, 18], [12, 18]]) { px(b, x * T + 6, y * T, 3, 14, "#6a6a72"); px(b, x * T + 3, y * T, 9, 3, "#d8d8e0"); }
+// junkyard: fence + wrecks + tire stacks
+fence(b, 1 * T - 6, 27 * T - 8, 12 * T + 12, 31 * T + 8);
+[["#7a8a9a", 1], ["#8a4a3a", 1], ["#4a6a4a", 1], ["#9a8a5a", 1], ["#5a5a7a", 1], ["#8a8a8a", 1]].forEach(([c, r], i) =>
+  car(b, (1.4 + (i % 3) * 3.4) * T, (27.5 + (i / 3 | 0) * 2) * T, c, r));
+for (let i = 0; i < 3; i++) { px(b, 11 * T, 28 * T + i * 5, 10, 5, "#222"); px(b, 11 * T + 3, 28 * T + i * 5 + 1, 4, 3, "#555"); }
+// garage (busted roll-up door) + machine shop
+building(b, 13.5 * T, 21 * T, 5 * T, 3 * T, "#8a9aa8", "#4a5a6a", { windows: [[6, 18]] });
+px(b, 13.5 * T + 30, 21 * T + 20, 40, 28, "#5a6570"); for (let i = 0; i < 28; i += 3) px(b, 13.5 * T + 30, 21 * T + 20 + i, 40, 1, "#707c88");
+px(b, 13.5 * T + 30, 21 * T + 40, 18, 8, "#1a1a20");
+building(b, 13.5 * T, 26.5 * T, 5 * T, 3.5 * T, "#9a8a78", "#5a4a3a", { windows: [[8, 22], [26, 22], [44, 22]], door: [62, 12] });
+px(b, 13.5 * T + 20, 26.5 * T + 2, 8, 6, "#6a6a6a"); // chimney-ish vent
+// diner
+building(b, 20.5 * T, 26.5 * T, 7 * T, 3.5 * T, "#e8dcc0", "#c84a3a", { windows: [[8, 22], [22, 22], [36, 22], [72, 22], [86, 22]], door: [52, 14], doorColor: "#4a6a8a" });
+for (let i = 0; i < 7 * T + 4; i += 8) px(b, 20.5 * T - 2 + i, 26.5 * T, 4, 10, "#f0e8d8");
+px(b, 20.5 * T + 30, 26.5 * T + 12, 52, 9, "#2a2a3a");
+// ambulance station
+building(b, 29 * T, 26.3 * T, 7 * T, 2.6 * T, "#d8d8dc", "#3a4a6a", { windows: [[8, 16], [92, 16]] });
+for (const ox of [28, 58]) { px(b, 29 * T + ox, 26.3 * T + 16, 24, 26, "#4a5260"); for (let i = 0; i < 24; i += 3) px(b, 29 * T + ox, 26.3 * T + 16 + i, 24, 1, "#5a6270"); }
+function ambulance(g, x, y) { px(g, x + 1, y + 13, 30, 3, "#0004"); px(g, x, y + 2, 22, 11, "#f4f4f4"); px(g, x + 22, y + 5, 9, 8, "#f4f4f4");
+  px(g, x + 24, y + 6, 5, 3, "#8ab4e8"); px(g, x, y + 8, 31, 2, "#d83a2a"); px(g, x + 8, y, 6, 2, "#e84a3a"); px(g, x + 4, y + 12, 5, 4, "#222"); px(g, x + 22, y + 12, 5, 4, "#222"); }
+ambulance(b, 29.6 * T, 29.2 * T); ambulance(b, 32.4 * T, 29.4 * T);
+// house + shed (backyard)
+building(b, 13.5 * T, 13 * T, 4 * T, 3 * T, "#c8b48a", "#6a7a4a", { windows: [[8, 18], [42, 18]], door: [26, 10] });
+building(b, 18.6 * T, 14.4 * T, 2.2 * T, 1.8 * T, "#8a8a90", "#5a5a62", { door: [12, 10], doorColor: "#3a3a40" });
+fence(b, 13 * T, 12.7 * T, 21.4 * T, 16.9 * T);
+// rail yard: boxcars parked
+function boxcar(g, x, y, col) { px(g, x, y, 30, 10, col); px(g, x, y, 30, 2, "#ffffff22"); for (let i = 3; i < 30; i += 6) px(g, x + i, y + 2, 1, 8, "#0002");
+  px(g, x + 3, y + 10, 4, 3, "#222"); px(g, x + 23, y + 10, 4, 3, "#222"); }
+boxcar(b, 30 * T, 18 * T + 1, "#8a4a2a"); boxcar(b, 32 * T, 18 * T + 1, "#4a6a8a"); boxcar(b, 35 * T, 22 * T + 1, "#6a6a3a");
+// river canyon rocks
+for (let y = 22; y < 31; y += 2) { px(b, 39 * T + (rnd() * 6 | 0), y * T + 4, 6, 4, "#7a7a86"); px(b, 46 * T - (rnd() * 6 | 0), y * T + 8, 6, 4, "#7a7a86"); }
+// dead pine with nest (Bolt's home)
+(function nestTree(g, x, y) {
+  px(g, x + 6, y + 30, 24, 4, "#0003");
+  px(g, x + 15, y + 4, 5, 30, "#6a5040"); px(g, x + 16, y + 4, 1, 30, "#8a6a54");
+  [[4, 10, 12], [20, 12, 11], [6, 18, 10], [20, 20, 10], [8, 26, 8], [19, 26, 9]].forEach(([bx, by, w]) => px(g, x + bx, y + by, w, 2, "#6a5040"));
+  px(g, x + 9, y, 18, 6, "#8a6a40"); px(g, x + 10, y + 1, 16, 2, "#a8885a"); for (let i = 0; i < 18; i += 3) px(g, x + 9 + i, y + 5, 2, 2, "#6a5030");
+})(b, 22.4 * T, 13.2 * T);
+// scattered pine forest (avoid structures)
+for (let i = 0; i < 260; i++) {
+  const x = rnd() * W | 0, y = rnd() * H | 0;
+  if (grid[y][x] !== "g" || busy[y][x]) continue;
+  if (y + 1 < H && grid[y + 1][x] !== "g") continue;
+  busy[y][x] = true; pine(b, x * T - 2, y * T - 10, 1);
+}
+// summit flag
+px(b, 24 * T + 7, 0 * T + 6, 1, 10, "#5a4a3a"); px(b, 24 * T + 8, 0 * T + 6, 6, 4, "#e84a3a");
+
+// ======================= places =======================
+const P = {
+  nest:              { x: 24.6, y: 13.4, r: [22, 13, 26, 17], name: "Bolt's Nest" },
+  junkyard:          { x: 6.5,  y: 28.5, r: [1, 27, 12, 31], name: "Junkyard" },
+  rail_yard:         { x: 33.5, y: 20.2, r: [28, 17, 39, 23], name: "Rail Yard" },
+  creek:             { x: 42,   y: 26,   r: [39, 21, 47, 31], name: "River Canyon" },
+  garage:            { x: 16,   y: 21.6, r: [13, 21, 19, 24], name: "Old Garage" },
+  diner_roof:        { x: 24,   y: 26.8, r: [20, 26, 27, 30], name: "Diner Roof" },
+  ambulance_station: { x: 32.5, y: 26.8, r: [28, 26, 36, 31], name: "Ambulance Station" },
+  drift_lot:         { x: 6.5,  y: 15.4, r: [1, 13, 12, 18], name: "Drift Lot" },
+  lake:              { x: 39.5, y: 6.5,  r: [34, 2, 47, 12], name: "The Lake" },
+  shed:              { x: 19.7, y: 14.6, r: [18, 13, 21, 17], name: "The Shed" },
+  mountain_trail:    { x: 22.5, y: 6.8,  r: [17, 4, 30, 11], name: "Mountain Trail" },
+  old_barn:          { x: 4.5,  y: 2.6,  r: [1, 1, 8, 7], name: "The Old Barn" },
+  machine_shop:      { x: 16,   y: 27.2, r: [13, 26, 19, 31], name: "Machine Shop" },
+  summit:            { x: 24.3, y: 1.6,  r: [20, 0, 28, 3], name: "The Summit" },
+};
+const placeAt = (tx, ty) => {
+  // smallest matching rectangle wins (summit inside trail, shed inside house yard, etc.)
+  let best = null, area = 1e9;
+  for (const [k, p] of Object.entries(P)) { const [x0, y0, x1, y1] = p.r;
+    if (tx >= x0 && tx <= x1 + 1 && ty >= y0 && ty <= y1 + 1) { const a = (x1 - x0 + 1) * (y1 - y0 + 1); if (a < area) { area = a; best = k; } } }
+  return best;
+};
+
+// ======================= Bolt sprite =======================
+const PAL = { K: "#16161f", k: "#2c3456", B: "#4a4a52", W: "#ffffff", O: "#8a8a92", Y: "#e8c840" };
+const SPR = {
+  perch: [
+    "......KK......",
+    ".....KKKK.....",
+    "....KKkKWBB...",
+    "....KKKKKBBB..",
+    "...KKKKKKK....",
+    "..KKkKKKKKK...",
+    ".KKKkkKKKKK...",
+    "KKKKKkKKKKK...",
+    ".KK.KKKKKK....",
+    ".....K..K.....",
+    ".....O..O.....",
+  ],
+  up: [
+    "K..............K",
+    "KK............KK",
+    ".KKk...KK...kKK.",
+    "..KKk.KKKK.kKK..",
+    "...KKKKkKWBBK...",
+    "....KKKKKKBBB...",
+    ".....KKKKKK.....",
+    "....KK.KK.......",
+  ],
+  down: [
+    "................",
+    "......KK........",
+    ".....KKKKWBB....",
+    "...KKKkKKKBBB...",
+    ".KKKKKKKKKKKKK..",
+    "KKk..KKKKKK..kKK",
+    "K.....KKKK.....K",
+    "......K..K......",
+  ],
+};
+function sprite(name, flip) {
+  // 2x scale with a pale 1px outline so he reads on any background
+  const rows = SPR[name], h = rows.length, w = rows[0].length, Z = 2, c = document.createElement("canvas");
+  c.width = (w + 2) * Z; c.height = (h + 2) * Z; const g = c.getContext("2d");
+  const at = (x, y) => (y >= 0 && y < h && x >= 0 && x < w) ? PAL[rows[y][flip ? w - 1 - x : x]] : null;
+  for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++)
+    if (!at(x, y) && (at(x - 1, y) || at(x + 1, y) || at(x, y - 1) || at(x, y + 1))) px(g, (x + 1) * Z, (y + 1) * Z, Z, Z, "#f4f0e0");
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const col = at(x, y); if (col) px(g, (x + 1) * Z, (y + 1) * Z, Z, Z, col); }
+  return c;
+}
+const S = { perch: [sprite("perch"), sprite("perch", 1)], up: [sprite("up"), sprite("up", 1)], down: [sprite("down"), sprite("down", 1)] };
+
+const IPAL = { k: "#2a2a3a", b: "#4a86d4", B: "#2c5aa0", s: "#a8d4f8", r: "#d85a3a", y: "#e8c040", g: "#8a8a96", w: "#ffffff", n: "#8a6a44", p: "#c8a46a", G: "#48c060" };
+const ICONS = {
+  fish:  ["...bbb..", "b.bsbbb.", "bbbbbkbb", "b.bbbbb.", "...bbb.."],
+  sift:  ["..r..s..", ".rrr....", "rrwrr.s.", ".rrr....", "..r..s.."],
+  dig:   ["....gg..", "...ggg..", "..n.g...", ".n......", "n......."],
+  tinker:["gg...gg.", ".gg.gg..", "..ggg...", ".gg.gg..", "gg...gg."],
+  penny_on_tracks: ["..yyy...", ".yyyyy..", ".yykyy..", ".yyyyy..", "..yyy..."],
+  read:  ["nnn.nnn.", "nwwnwwn.", "nwwnwwn.", "nwwnwwn.", "nnnnnnn."],
+  look_up: [".kkk....", "k.s.k...", "k...k...", ".kkkk...", "....kk.."],
+  make_music: ["..kkkkk.", "..k...k.", "..k...k.", "kkk.kkk.", "kk..kk.."],
+  draw:  ["......r.", ".....rr.", "....yy..", "...yy...", "kkk....."],
+  scavenge: ["..y.....", ".yyy....", "..y..y..", "....yyy.", ".....y.."],
+};
+
+// ======================= live state =======================
+let state = null, online = false;
+let showNames = true;
+try { showNames = localStorage.getItem("bolt_names") !== "0"; } catch {}
+const bolt = { x: P.nest.x * T, y: P.nest.y * T, fromX: 0, fromY: 0, toX: P.nest.x * T, toY: P.nest.y * T, t0: 0, dur: 0, facing: 0, loc: null };
+const waterTiles = []; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (grid[y][x] === "w") waterTiles.push([x, y]);
+let train = { x: -400, next: performance.now() + 8000 };
+const puffs = [];
+
+function flyTo(loc, instant) {
+  const p = P[loc] || P.nest, tx = p.x * T, ty = p.y * T;
+  if (instant) { Object.assign(bolt, { x: tx, y: ty, toX: tx, toY: ty, dur: 0 }); return; }
+  const dist = Math.hypot(tx - bolt.x, ty - bolt.y);
+  Object.assign(bolt, { fromX: bolt.x, fromY: bolt.y, toX: tx, toY: ty, t0: performance.now(), dur: Math.max(900, dist * 6) });
+  bolt.facing = tx < bolt.x ? 1 : 0;
+}
+
+// ======================= render loop =======================
+function nightAmount(h) { if (h >= 7 && h <= 18) return 0; if (h > 18 && h < 21) return (h - 18) / 3; if (h >= 5 && h < 7) return (7 - h) / 2; return 1; }
+function draw(now) {
+  cx.drawImage(base, 0, 0);
+  const t = now / 1000;
+  // water shimmer
+  for (const [x, y] of waterTiles) { const k = (x * 7 + y * 13 + (t * 2 | 0)) % 9; if (k < 2) px(cx, x * T + ((x * 5 + y * 3) % 10), y * T + 5 + k * 4, 4, 1, "#a8d4f8"); }
+  // diner sign blink
+  px(cx, 20.5 * T + 32, 26.5 * T + 14, 48, 5, Math.sin(t * 3) > -0.3 ? "#ff6a8a" : "#5a2a3a");
+  // drift coupe (original white coupe) doing laps
+  { const a = t * 0.9, ex = 6.5 * T + Math.cos(a) * 3.3 * T, ey = 15.5 * T + Math.sin(a) * 1.6 * T;
+    cx.save(); cx.translate(ex, ey); cx.rotate(a + Math.PI / 2 + 0.5);
+    px(cx, -10, -5, 20, 10, "#f2f2f2"); px(cx, -4, -4, 8, 8, "#cfd8e4"); px(cx, -3, -3, 6, 6, "#5a7090"); px(cx, -10, -5, 2, 10, "#d83a2a"); cx.restore();
+    if (Math.random() < .5) puffs.push({ x: ex, y: ey, life: 1 }); }
+  for (let i = puffs.length - 1; i >= 0; i--) { const p = puffs[i]; p.life -= 0.02; p.y -= 0.15;
+    if (p.life <= 0) { puffs.splice(i, 1); continue; } cx.globalAlpha = p.life * 0.5; px(cx, p.x - 3, p.y - 3, 6 + (1 - p.life) * 8, 6 + (1 - p.life) * 8, "#d8d8e0"); cx.globalAlpha = 1; }
+  // shed sparks in daytime
+  const hour = state ? state.hour : new Date().getHours();
+  if (nightAmount(hour) < .5 && Math.sin(t * 1.3) > 0.2 && Math.random() < .6) for (let i = 0; i < 3; i++) px(cx, 19.4 * T + Math.random() * 14, 15.6 * T + Math.random() * 6, 1, 1, Math.random() < .5 ? "#ffe060" : "#ffffff");
+  // freight train rolling through
+  if (now > train.next && train.x < -300) train.x = W * T + 40;
+  if (train.x > -400) { train.x -= 1.6; const y = 20 * T + 2;
+    px(cx, train.x, y - 2, 30, 12, "#2a3a5a"); px(cx, train.x + 2, y - 5, 10, 4, "#2a3a5a"); px(cx, train.x + 3, y - 4, 5, 2, "#ffe070");
+    ["#8a4a2a", "#4a6a8a", "#6a6a3a", "#7a3a3a", "#5a5a5a", "#8a6a3a", "#3a5a4a"].forEach((c, i) => { const bx = train.x + 34 + i * 33; px(cx, bx, y, 31, 10, c); px(cx, bx, y, 31, 2, "#ffffff22"); });
+    if (train.x < -300) train.next = now + 25000 + Math.random() * 30000; }
+  // shiny things people left
+  if (state && state.placed) for (const [k, items] of Object.entries(state.placed)) if (items && items.length && P[k]) {
+    const sx = P[k].x * T + 10, sy = P[k].y * T + 8, on = Math.sin(t * 5 + sx) > 0;
+    px(cx, sx - 1, sy - 4, 2, 9, on ? "#fff8b0" : "#ffe060"); px(cx, sx - 4, sy - 1, 9, 2, on ? "#fff8b0" : "#ffe060"); if (on) px(cx, sx - 1, sy - 1, 2, 2, "#ffffff");
+  }
+  // Bolt
+  let flying = false;
+  if (bolt.dur) { const k = Math.min(1, (now - bolt.t0) / bolt.dur), e = k < .5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
+    bolt.x = bolt.fromX + (bolt.toX - bolt.fromX) * e; bolt.gy = bolt.fromY + (bolt.toY - bolt.fromY) * e; bolt.y = bolt.gy - Math.sin(k * Math.PI) * 40;
+    flying = k < 1; if (!flying) bolt.dur = 0; }
+  const hop = flying ? 0 : (Math.sin(t * 2) > 0.95 ? -2 : 0);
+  if (flying) { cx.globalAlpha = .25; px(cx, bolt.x - 10, bolt.gy + 11, 20, 3, "#000"); cx.globalAlpha = 1; }
+  else { cx.globalAlpha = .3; px(cx, bolt.x - 9, bolt.y + 11, 18, 3, "#000"); cx.globalAlpha = 1; }
+  const spr = flying ? ((now / 120 | 0) % 2 ? S.up : S.down)[bolt.facing] : S.perch[bolt.facing];
+  cx.drawImage(spr, Math.round(bolt.x - spr.width / 2), Math.round(bolt.y - spr.height + 12 + hop));
+  // little bobbing marker so he's easy to find
+  if (!flying) { const my = bolt.y - spr.height + 2 + Math.sin(t * 4) * 2; px(cx, bolt.x - 3, my - 6, 7, 2, "#ffd866"); px(cx, bolt.x - 2, my - 4, 5, 2, "#ffd866"); px(cx, bolt.x - 1, my - 2, 3, 2, "#ffd866"); }
+  // what he's doing right now
+  const act = state && state.last && state.last.action;
+  if (!flying && !(state && state.asleep) && ICONS[act]) {
+    const ic = ICONS[act], ix = Math.round(bolt.x + 12), iy = Math.round(bolt.y - 30 + Math.sin(t * 3) * 1.5);
+    px(cx, ix - 2, iy - 2, ic[0].length * 2 + 4, ic.length * 2 + 4, "#f8f4e3"); px(cx, ix - 2, iy + ic.length * 2 + 2, ic[0].length * 2 + 4, 1, "#3c4a6b");
+    ic.forEach((row, y) => [...row].forEach((ch, x) => { if (IPAL[ch]) px(cx, ix + x * 2, iy + y * 2, 2, 2, IPAL[ch]); }));
+    if (act === "fish") { cx.strokeStyle = "#e8e8f0"; cx.lineWidth = 1; cx.beginPath(); cx.moveTo(bolt.x + 8, bolt.y - 4); cx.lineTo(bolt.x + 22, bolt.y + 10 + Math.sin(t * 2) * 2); cx.stroke();
+      px(cx, bolt.x + 21, bolt.y + 9 + Math.sin(t * 2) * 2, 3, 3, "#e84a3a"); }
+    if (act === "sift" && Math.random() < .4) px(cx, bolt.x - 8 + Math.random() * 16, bolt.y + 8 + Math.random() * 4, 1, 1, "#a8d4f8");
+    if (act === "tinker" && Math.random() < .5) px(cx, bolt.x - 6 + Math.random() * 12, bolt.y - 2 + Math.random() * 8, 1, 1, "#ffe060");
+  }
+  // sleeping z's
+  if (state && state.asleep && !flying) { const zt = (t % 3) / 3; cx.globalAlpha = 1 - zt; cx.fillStyle = "#ffffff"; cx.font = "8px 'Press Start 2P', monospace";
+    cx.fillText("z", bolt.x + 6 + zt * 8, bolt.y - 10 - zt * 16); cx.fillText("Z", bolt.x + 12 + zt * 10, bolt.y - 18 - zt * 20); cx.globalAlpha = 1; }
+  // weather
+  const wx = state ? state.weather : "clear";
+  if (wx === "rain" || wx === "thunderstorm") { cx.fillStyle = "#c8dcffaa"; for (let i = 0; i < 260; i++) { const rx = (i * 97 + t * 300) % (W * T), ry = (i * 53 + t * 520) % (H * T); cx.fillRect(rx, ry, 1, 7); }
+    cx.fillStyle = "rgba(40,50,70,0.18)"; cx.fillRect(0, 0, W * T, H * T); }
+  if (wx === "thunderstorm" && (t % 7) < 0.12) { cx.fillStyle = "rgba(255,255,240,0.55)"; cx.fillRect(0, 0, W * T, H * T); }
+  if (wx === "snow") { cx.fillStyle = "rgba(240,244,252,0.22)"; cx.fillRect(0, 0, W * T, H * T); cx.fillStyle = "#ffffff";
+    for (let i = 0; i < 160; i++) { const fx = (i * 97 + Math.sin(t + i) * 12 + t * 20) % (W * T), fy = (i * 53 + t * 40) % (H * T); cx.fillRect(fx, fy, 2, 2); } }
+  if (state && state.season === "winter" && wx !== "snow") { cx.fillStyle = "rgba(235,240,250,0.16)"; cx.fillRect(0, 0, W * T, H * T); }
+  if (wx === "light rain") { cx.fillStyle = "#c8dcff88"; for (let i = 0; i < 140; i++) { const rx = (i * 97 + t * 220) % (W * T), ry = (i * 53 + t * 380) % (H * T); cx.fillRect(rx, ry, 1, 5); } }
+  if (wx === "foggy") { cx.fillStyle = "rgba(232,238,244,0.14)"; cx.fillRect(0, 0, W * T, H * T);
+    for (let i = 0; i < 7; i++) { const fx = ((t * 6 + i * 160) % (W * T + 400)) - 200, fy = 40 + i * 70;
+      const gr = cx.createRadialGradient(fx, fy, 0, fx, fy, 170); gr.addColorStop(0, "rgba(240,244,250,0.22)"); gr.addColorStop(1, "rgba(240,244,250,0)");
+      cx.fillStyle = gr; cx.fillRect(fx - 170, fy - 170, 340, 340); } }
+  if (wx === "windy") { cx.fillStyle = "#ffffff55"; for (let i = 0; i < 18; i++) { const lx = (i * 131 + t * 300) % (W * T + 60) - 60, ly = (i * 71) % (H * T); cx.fillRect(lx, ly, 14 + (i % 3) * 6, 1); } }
+  if (wx === "cloudy") { cx.fillStyle = "rgba(60,70,90,0.12)"; cx.fillRect(0, 0, W * T, H * T); }
+  // place names
+  if (showNames) { cx.font = "8px 'Press Start 2P', monospace"; cx.textAlign = "center";
+    for (const p of Object.values(P)) { const label = p.name.replace("Bolt's ", ""), wdt = cx.measureText(label).width + 8, lx = p.x * T, ly = p.y * T + 26;
+      cx.globalAlpha = .82; px(cx, lx - wdt / 2, ly - 9, wdt, 12, "#1d2333"); cx.globalAlpha = 1; cx.fillStyle = "#f8f4e3"; cx.fillText(label, lx, ly); }
+    cx.textAlign = "start"; }
+  // night
+  const n = nightAmount(hour);
+  if (n > 0) { cx.fillStyle = `rgba(16,20,60,${0.55 * n})`; cx.fillRect(0, 0, W * T, H * T);
+    if (n > .4) { cx.fillStyle = "#ffe08a"; [[13.5 * T + 9, 13 * T + 19], [13.5 * T + 43, 13 * T + 19], [20.5 * T + 9, 26.5 * T + 23], [20.5 * T + 23, 26.5 * T + 23], [20.5 * T + 37, 26.5 * T + 23], [20.5 * T + 73, 26.5 * T + 23], [20.5 * T + 87, 26.5 * T + 23], [29 * T + 9, 26.3 * T + 17], [29 * T + 93, 26.3 * T + 17], [13.5 * T + 7, 21 * T + 19]]
+      .forEach(([x, y]) => cx.fillRect(x, y, 4, 3)); } }
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+// ======================= UI =======================
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function toast(msg) { const el = $("toast"); el.textContent = msg; el.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => el.style.display = "none", 2600); }
+function bar(el, v) { el.style.width = Math.max(2, v) + "%"; el.style.background = v > 50 ? "var(--hp)" : v > 20 ? "var(--hp-mid)" : "var(--hp-low)"; }
+async function post(path, body) {
+  try { const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); return r.ok; }
+  catch { return false; }
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/state", { cache: "no-store" }); state = await r.json(); online = true;
+    if (bolt.loc !== state.location) { flyTo(state.location, bolt.loc === null); bolt.loc = state.location; setTimeout(centerOnBolt, 300); }
+    bar($("en"), state.energy ?? 0); bar($("md"), ((state.mood ?? 0) + 5) * 10);
+    const where = P[state.location]?.name || state.location;
+    const tp = state.temps; const gpu = tp ? ` · GPU ${tp.now}°C (1h max ${tp.max_1h}°)` : "";
+    const air = state.temp_f != null ? ` ${state.temp_f}°F` : "";
+    $("meta").textContent = `${state.server_time} · ${state.weather || ""}${air} · ${state.season || ""} · ${state.asleep ? "asleep" : where}${gpu}`;
+    $("meta").style.color = tp && tp.now >= tp.pause_at ? "var(--hp-low)" : "";
+    const L = state.last || {};
+    $("who").textContent = state.asleep ? "BOLT (asleep)" : `BOLT · ${where.toUpperCase()}`;
+    if (L.reply) { $("line1").textContent = `"${L.reply}"`; $("line2").textContent = (L.heard || []).join("  ·  "); }
+    else { $("line1").textContent = L.thought ? `"${L.thought}"` : "…"; $("line2").textContent = L.outcome ? `→ ${L.outcome}${L.reflection ? ". " + L.reflection : ""}` : ""; }
+  } catch { online = false; $("meta").innerHTML = '<span class="offline">Bolt is offline</span>'; }
+}
+setInterval(poll, 3000); poll();
+
+// map interaction
+let currentPlace = null;
+function canvasTile(ev) { const r = cv.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * W, y = (ev.clientY - r.top) / r.height * H; return [x, y, ev.clientX - r.left, ev.clientY - r.top]; }
+cv.addEventListener("mousemove", ev => { const [x, y, sx, sy] = canvasTile(ev), k = placeAt(x, y), tag = $("tag");
+  if (k) { tag.textContent = P[k].name; tag.style.left = sx + "px"; tag.style.top = sy + "px"; tag.style.display = "block"; } else tag.style.display = "none"; });
+cv.addEventListener("mouseleave", () => $("tag").style.display = "none");
+cv.addEventListener("click", ev => { const [x, y] = canvasTile(ev), k = placeAt(x, y); if (k) openPlace(k); });
+function openPlace(k) {
+  currentPlace = k; $("pName").textContent = P[k].name.toUpperCase() + (state && state.location === k ? "  ·  BOLT IS HERE" : "");
+  $("pDesc").textContent = (state && state.places && state.places[k]) || "";
+  const items = (state && state.placed && state.placed[k]) || [];
+  $("pShiny").textContent = items.length ? `✦ Waiting to be found here: ${items.join(", ")}` : "";
+  $("pItem").value = ""; $("placeSheet").classList.add("open");
+}
+$("pLeave").onclick = async () => { const item = $("pItem").value.trim(); if (!item) return;
+  if (await post("/api/place", { place: currentPlace, item })) { toast(`Left ${item} at the ${P[currentPlace].name}. He'll have to find it.`); close(); setTimeout(poll, 500); } else toast("Couldn't reach Bolt"); };
+$("pCall").onclick = async () => { if (await post("/api/call", { place: currentPlace })) { toast(`You wave Bolt over to the ${P[currentPlace].name}…`); close(); } else toast("Couldn't reach Bolt"); };
+
+// talk
+async function send() { const text = $("say").value.trim(); if (!text) return; $("say").value = "";
+  if (await post("/api/talk", { text })) { $("who").textContent = "YOU"; $("line1").textContent = `"${text}"`; $("line2").textContent = "Bolt cocks his head… thinking"; }
+  else toast("Couldn't reach Bolt"); }
+$("sendBtn").onclick = send; $("say").addEventListener("keydown", e => { if (e.key === "Enter") send(); });
+
+// stash
+$("stashBtn").onclick = () => {
+  const s = state || {};
+  $("stashList").innerHTML = (s.collection || []).slice().reverse().map(c => /\((from|left by) /.test(c) ? `<li class="gift">♥ ${esc(c)}</li>`
+    : /\(made from /.test(c) ? `<li>🔧 ${esc(c)}</li>` : `<li>${esc(c)}</li>`).join("") || "<li>empty</li>";
+  const H = Object.entries(s.hoard || {}), total = H.reduce((a, [, v]) => a + v.count, 0);
+  $("hoardTitle").textContent = `THE HOARD · ${total} TREASURES`;
+  $("hoardList").innerHTML = H.sort((a, b) => (b[1].gift - a[1].gift) || (b[1].count - a[1].count)).map(([k, v]) =>
+    `<li${v.gift ? ' class="gift"' : ""}>${v.gift ? "♥ " : /\(made from /.test(k) ? "🔧 " : ""}${esc(k)}${v.count > 1 ? ` ×${v.count}` : ""}</li>`).join("") || "<li>empty</li>";
+  const lvl = xp => Math.floor(Math.sqrt(xp / 4));
+  $("skillList").innerHTML = Object.entries(s.skills || {}).map(([k, xp]) => { const L = lvl(xp), next = 4 * (L + 1) ** 2;
+    return `<li>${esc(k)} · LV ${L} <span style="opacity:.6">(${xp}/${next} xp)</span></li>`; }).join("") || "<li>none yet</li>";
+  $("recordList").innerHTML = Object.entries(s.records || {}).map(([k, v]) => `<li>${esc(k)}: ${v}"</li>`).join("") || "<li>none yet</li>";
+  $("bookList").innerHTML = (s.books || []).map(b => `<li>${esc(b)}</li>`).join("") || "<li>no books yet</li>";
+  $("wordList").textContent = (s.words || []).join(" · ") || "none yet";
+  $("factList").innerHTML = (s.facts || []).map(f => `<li>${esc(f)}</li>`).join("") || "<li>nothing yet</li>";
+  $("likes").textContent = s.likes || "";
+  $("memTitle").textContent = `MEMORY BOOK · ${s.memory_count || 0} MEMORIES`;
+  $("memList").innerHTML = (s.memory_highlights || []).slice().reverse().slice(0, 25).map(m =>
+    `<li><span style="opacity:.6">${esc(m.when)}${m.where ? " · " + esc(m.where) : ""}</span><br>${esc(m.text.length > 220 ? m.text.slice(0, 220) + "…" : m.text)}</li>`).join("") || "<li>nothing yet</li>";
+  $("peopleList").innerHTML = Object.entries(s.people || {}).map(([who, fs]) =>
+    `<b>${esc(who)}</b><ul class="list">${fs.map(f => `<li>${esc(f)}</li>`).join("")}</ul>`).join("") || "nobody yet";
+  $("stashSheet").classList.add("open");
+};
+$("giveBtn").onclick = async () => { const item = $("giveItem").value.trim(); if (!item) return;
+  if (await post("/api/give", { item })) { $("giveItem").value = ""; toast(`You hand Bolt ${item}.`); close(); } else toast("Couldn't reach Bolt"); };
+
+// songs
+$("songsBtn").onclick = () => {
+  const files = ((state && state.song_files) || []).slice().reverse();
+  $("songList").innerHTML = files.map(f => { const title = f.replace(/^\d+_/, "").replace(/\.wav$/, "").replace(/_/g, " ");
+    return `<li>${esc(title)}<audio controls preload="none" src="/songs/${encodeURIComponent(f)}"></audio></li>`; }).join("") || "<li>no songs yet</li>";
+  const art = ((state && state.drawing_files) || []).slice().reverse();
+  $("artList").innerHTML = art.map(f => { const title = f.replace(/^\d+_/, "").replace(/\.svg$/, "").replace(/_/g, " ");
+    return `<figure><img src="/drawings/${encodeURIComponent(f)}" alt="${esc(title)}" loading="lazy"><figcaption>${esc(title)}</figcaption></figure>`; }).join("")
+    || '<p class="desc">no drawings yet</p>';
+  $("songsSheet").classList.add("open");
+};
+
+$("namesBtn").onclick = () => { showNames = !showNames; try { localStorage.setItem("bolt_names", showNames ? "1" : "0"); } catch {} };
+function centerOnBolt() { const st = $("stage"); if (!st.classList.contains("zoom")) return;
+  const sx = bolt.toX / (W * T) * cv.clientWidth - st.clientWidth / 2, sy = bolt.toY / (H * T) * cv.clientHeight - st.clientHeight / 2;
+  st.scrollTo({ left: sx, top: sy, behavior: "smooth" }); }
+$("zoomBtn").onclick = () => { const st = $("stage"); st.classList.toggle("zoom"); st.style.height = st.classList.contains("zoom") ? Math.min(innerHeight * 0.55, 520) + "px" : "";
+  setTimeout(centerOnBolt, 50); };
+
+// sheets
+function close() { document.querySelectorAll(".sheet").forEach(s => s.classList.remove("open")); document.querySelectorAll("audio").forEach(a => a.pause()); }
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = close);
+document.querySelectorAll(".sheet").forEach(s => s.addEventListener("click", e => { if (e.target === s) close(); }));
+</script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+# --- secrets: never commit ---
+discord_config.json
+dontopentoken.txt
+*.token
+
+# --- Bolt's life (personal, and it changes every 5 minutes) ---
+state.json*
+hoard.json*
+memory_book.jsonl
+diary.md
+temps.csv
+names.json
+old_names.json
+bolt.alive
+overheat.lock
+stop.flag
+restart.flag
+*.pending
+offerings.txt
+talk.txt
+placements.txt
+calls.txt
+book_requests.txt
+
+# --- things he makes ---
+songs/
+drawings/
+
+# --- books fetched from Project Gutenberg at runtime (!book) ---
+library/Steep_Trails.txt
+
+__pycache__/
+*.pyc
