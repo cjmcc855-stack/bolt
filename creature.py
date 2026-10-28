@@ -643,6 +643,19 @@ def aimed_elsewhere(arg, others):
     return tag in others, arg.strip()
 
 
+def for_another_creature(m, text):
+    """'Hi Spike!' is for Spike: a human message that names, @'s, or replies to another creature,
+    and doesn't mention Bolt, is left for that creature to answer."""
+    others = fellow_creatures()
+    if not others or re.search(rf"\b{re.escape(NAME)}\b", text, re.I):
+        return False
+    if any((u.get("username") or "").lower() in others for u in m.get("mentions") or []):
+        return True
+    if ((m.get("referenced_message") or {}).get("author") or {}).get("username", "").lower() in others:
+        return True
+    return any(re.search(rf"\b{re.escape(n)}\b", text, re.I) for n in others.values())
+
+
 def screen_creature(m, name, my_id, t):
     """One bot message from a listed creature -> a line for the inbox, or None. Never a command, never the owner."""
     text = (m.get("content") or "").strip()
@@ -754,7 +767,7 @@ def discord_listener():
                 continue   # /start, /stop, /status belong to the launcher
             if text.lower().startswith("/give "):
                 inbox(OFFERINGS, f"{re.sub(r'[|]', ' ', text[6:].strip())[:200]} (from {who})")
-            else:
+            elif not for_another_creature(m, text):
                 inbox(TALK, f"{who}|{re.sub(r'[|]', ' ', text)[:1500]}")
 
 

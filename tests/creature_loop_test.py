@@ -175,6 +175,12 @@ run(w)
 gifts = open(c.OFFERINGS).read().splitlines() if os.path.exists(c.OFFERINGS) else []
 check(gifts == ["a shiny rock (from Caelan)"], f"'!give spike' skipped, '!give bolt' kept: {gifts}")
 check(not c.RESTART.is_set(), "'!restart spike' doesn't restart Bolt")
+script = [(base + 10, ("actuallyputin", "9", "Hi Spike!")), (base + 20, ("actuallyputin", "9", "hey spike, what about bolt?")),
+          (base + 30, ("actuallyputin", "9", "hey everyone"))]
+w = World(1, script=script)
+run(w)
+talk = [l for l in open(c.TALK).read().splitlines() if "seed" not in l] if os.path.exists(c.TALK) else []
+check(talk == ["Caelan|hey spike, what about bolt?", "Caelan|hey everyone"], f"'Hi Spike!' left for Spike, the rest heard: {talk}")
 g = c.CreatureGuard()
 for i in range(c.CREATURE_STREAK):
     g.hear("Spike", f"message about {WORDS[i]}", base + i * 700)
