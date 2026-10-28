@@ -725,6 +725,9 @@ def discord_listener():
                 if who == HUMAN:
                     inbox(BOOK_REQUESTS, text[6:].strip())
                 continue
+            if text.lower() in ("/call", "/leave", "/hide"):     # no place given: show where he can go
+                discord_post(f"*Places: {', '.join(p.replace('_', ' ') for p in PLACES)}. Try: !call summit · !leave lake a spinner lure*")
+                continue
             if text.lower().startswith(("/leave ", "/hide ")):
                 place, item = split_place(text.split(" ", 1)[1])
                 if place and item:
