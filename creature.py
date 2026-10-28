@@ -8,6 +8,7 @@ Run:    python creature.py              (or double-click) runs him forever, one 
 World:  http://localhost:8642           his 16-bit town, chat, gifts, stash, songs, art
 Talk:   type in his window, Discord, or the world page.  !give <thing>  !book <title>  !restart
 Test:   python tests/sim_days.py .      days of fake life with a chaotic brain; must say PROBLEMS: 0
+        python tests/creature_loop_test.py   a badly behaved bot vs. his Discord loop protection
 Reset:  delete state.json, hoard.json and memory_book.jsonl to hatch a brand new crow
 
 MAP OF THIS FILE (search for the "# ----" headers)
@@ -32,9 +33,11 @@ SAFETY RULES THE CODE KEEPS
   - Saves are atomic with a .bak; the hoard and state are stamped with the same tick.
   - Gifts are never dropped, used up, or double counted.
   - Messages wait in .pending files until the tick that handles them is saved.
-  - !restart runs tests/sim_days.py on the new code first and refuses to restart into broken code.
+  - !restart runs tests/sim_days.py and tests/creature_loop_test.py on the new code first and refuses to
+    restart into broken code.
+  - Other creatures (bots listed in creatures.json) are heard under strict loop limits and can never run commands.
 """
-import json, math, os, random, re, socket, struct, subprocess, sys, threading, time, wave, urllib.parse, urllib.request
+import json, os, random, re, socket, struct, subprocess, sys, threading, time, wave, urllib.parse, urllib.request
 import collections, copy
 from datetime import datetime
 
@@ -222,7 +225,7 @@ def load_state():
     s = None
     for fp in (STATE_FILE, STATE_FILE + ".bak", STATE_FILE + ".tmp"):
         try:
-            with open(fp) as f:
+            with open(fp, encoding="utf-8") as f:
                 s = json.load(f)
             if fp != STATE_FILE:
                 print(f"state.json was damaged, recovered {NAME}'s memory from {fp}")
@@ -269,7 +272,7 @@ def atomic_save(path, obj):
         json.dump(obj, f, indent=1)
         f.flush()
         os.fsync(f.fileno())
-    for attempt in range(20):       # Windows/OneDrive can briefly lock the file; retry for up to ~4s
+    for _ in range(20):             # Windows/OneDrive can briefly lock the file; retry for up to ~4s
         try:
             if os.path.exists(path) and os.path.getsize(path) > 0:
                 try:
@@ -970,6 +973,11 @@ def note(s, topic, fact):
             del nb[:-NOTEBOOK_MAX]
 
 
+COMMON_WORDS = set("""that this with your have what when where there their they them then than from into just like
+about would could should been were will some more very much make made does doing going want think know really here
+also only even back over well good great nice cool hey hello thanks thank today tonight right maybe sure""".split())
+
+
 def relevant_notes(s, place=None, action=None, text=None, n=5):
     """What he knows that matters right now: by place, by activity, or by words in what someone said."""
     topics = [t for t, (_, places, acts) in TOPICS.items() if place in places or action in acts]
@@ -980,7 +988,7 @@ def relevant_notes(s, place=None, action=None, text=None, n=5):
         nb = s["notebooks"].get(t, [])
         picked += random.sample(nb, min(len(nb), 3))
     if text:
-        words = {w for w in re.findall(r"[a-z]+", text.lower()) if len(w) > 3}
+        words = {w for w in re.findall(r"[a-z]+", text.lower()) if len(w) > 3} - COMMON_WORDS
         for nb in s["notebooks"].values():
             picked += [f for f in nb if words & set(re.findall(r"[a-z]+", f.lower()))]
     return list(dict.fromkeys(picked))[:n]
@@ -1038,7 +1046,46 @@ def learn(s, kind, source, text):
     out = str(r.get("reaction") or "").strip()
     if words:
         out += f" (new favorite words: {', '.join(words)})"
-    return out
+    return out + revise_beliefs(s, source, text)
+
+
+def revise_beliefs(s, source, text):
+    """Learning by correction: if what he just read is about one of his things and shows something he figured out
+    about it was wrong, he updates it. The old belief isn't erased; it's kept as something he used to think."""
+    low, notes = text.lower(), []
+    for key, lore in list(s["item_lore"].items()):
+        words = set(re.findall(r"[a-z]{4,}", key)) - COMMON_WORDS
+        if not lore.get("facts") or not words or not any(re.search(rf"\b{w}s?\b", low) for w in words):
+            continue
+        facts = lore["facts"]
+        r = parse_json(call_llm(
+            f"You just read this ({source}):\n\"\"\"{text[:2500]}\"\"\"\n\n"
+            f"Things you figured out about your {key} before:\n"
+            + "\n".join(f"{i}. {f}" for i, f in enumerate(facts))
+            + "\n\nDoes what you read clearly show any of those is WRONG? Only count it if the reading actually says "
+            "so. Respond ONLY with JSON: "
+            '{"wrong": [numbers of the wrong ones, or empty], "now_you_know": "the true thing, one short sentence, or empty"}',
+            temp=0.2))
+        wrong = sorted({int(i) for i in as_list(r.get("wrong")) if str(i).isdigit() and int(i) < len(facts)})
+        truth = clip(r.get("now_you_know", ""), 140).rstrip(".")
+        if not wrong or not truth:
+            continue
+        old = [facts[i] for i in wrong]
+        lore["used_to_think"] = lore.get("used_to_think", []) + old
+        lore["facts"] = [f for i, f in enumerate(facts) if i not in wrong] + [truth]
+        home = None
+        for topic, nb in s["notebooks"].items():          # the wrong version leaves his notebooks too
+            kept = [f for f in nb if f.split(": ", 1)[-1] not in old]
+            if len(kept) < len(nb):
+                home = home or topic
+            s["notebooks"][topic] = kept
+        if home:
+            note(s, home, f"{key}: {truth}")
+        notes.append(f" That changed what I thought about my {key}: I used to think {old[0][0].lower() + old[0][1:]}, "
+                     f"but now I know {truth[0].lower() + truth[1:]}.")
+        if len(notes) >= 2:
+            break
+    return "".join(notes)
 
 
 _BOOK_TEXT = {}
@@ -1474,9 +1521,11 @@ def do_examine(target, s):
         f"You're examining your {bare(item)} very closely: turning it over, pecking at it, looking at every part.\n"
         f"What you ALREADY know about it: {'; '.join(known) or 'nothing yet'}\n"
         f"Other things you know that might help: {'; '.join(f for f in relevant_notes(s, text=base_name(item), n=5) if f not in known) or 'nothing'}\n\n"
-        "Figure out something NEW about it that you didn't already know: what it's made of, how it works, what it's "
-        "for. Be accurate, like a real curious crow would figure out by studying it. If there's honestly nothing new "
-        "left to learn, set new to false. Respond ONLY with JSON: "
+        "Figure out something NEW about it that you didn't already know, from what you can actually see, hear, feel, "
+        "or test by pecking at it: its parts you can see, what it's made of, what happens when you push or turn things. "
+        "Don't name hidden insides you can't see or things you'd only know from a book (books are how you learn "
+        "those). Be accurate. If there's honestly nothing new left to learn by looking, set new to false. "
+        "Respond ONLY with JSON: "
         '{"new": true, "discovery": "one or two first-person sentences", "fact": "one short true thing you figured out", '
         f'"topic": "one of: {", ".join(TOPICS)}, other"}}', temp=0.6))
     fact, topic = clip(r.get("fact", ""), 140).rstrip("."), str(r.get("topic") or "other").lower()
@@ -1518,7 +1567,7 @@ def do_reminisce(target, s):
 
 
 # ---------------- PEOPLE ----------------
-PEOPLE_MAX = 100000   # effectively no limit: he never forgets what someone told him
+# No limit on what he remembers about people: he never forgets what someone told him.
 
 
 def learn_about_people(s, heard):
@@ -1529,14 +1578,15 @@ def learn_about_people(s, heard):
         r = parse_json(call_llm(
             f"{who} said to you: \"{said}\"\n"
             f"What you already know about {who}: {'; '.join(known) or 'nothing yet'}\n\n"
-            f"List any NEW facts {who} told you about THEMSELVES or their own life (their job, hobbies, feelings, people "
-            "and things in their life, plans, likes). Only what they actually said about themselves, no guesses. "
-            "Do NOT include things they said about you, your world, gifts, or places in your town. Short, written like "
+            f"List any NEW lasting facts {who} told you about THEMSELVES (their job, hobbies, people and things in "
+            "their life, likes). Only what they actually said about themselves, no guesses. Do NOT include plans for "
+            "today, passing moods, things they did or gave to you, or anything about you, your world, gifts, books, or "
+            "places in your town. Short, written like "
             'notes, e.g. "loves fishing". If there\'s nothing new, return an empty list. Respond ONLY with JSON: {"facts": ["..."]}', temp=0.2))
         new = [clip(f, 120).rstrip(".") for f in as_list(r.get("facts"))]
         new = [f for f in new if f.lower() not in {k.lower() for k in known}][:4]
         if new:
-            s["people"][who] = (known + new)[-PEOPLE_MAX:]
+            s["people"][who] = known + new
 
 
 # ---------------- WEATHER/SEASONS ----------------
@@ -1866,8 +1916,10 @@ def tick(s):
             or "(you've never talked before)"
         last_replies = [c["reply"] for c in s.get("convo", [])[-5:] if c.get("reply")]
         msgs = "\n".join(f"{w}: {m}" for w, m in heard)
-        know = "\n".join(f"What you know about {w}: {'; '.join(s['people'].get(w, [])) or 'not much yet'}"
+        know = "\n".join(f"Background on {w} (do NOT bring any of this up unless what they just said is about it): "
+                         f"{'; '.join(s['people'].get(w, [])) or 'not much yet'}"
                          for w in dict.fromkeys(w for w, _ in heard))
+        on_topic = relevant_notes(s, text=msgs)            # only what connects to what they said, not this place
         ask = random.random() < 0.35
         crutch = overused_words(s)
         reply = call_llm(
@@ -1875,8 +1927,8 @@ def tick(s):
             f"Who you are: {s['likes']}\n"
             f"How you talk: {s.get('voice') or 'short, blunt, bird-brained'}\n"
             f"Words you've picked up and like: {', '.join(s['words'][-10:]) or 'none yet'}\n"
-            f"Things you know that might matter here: {'; '.join(relevant_notes(s, loc, text=msgs) or s['facts'][-3:]) or 'nothing yet'}\n"
-            f"On your display shelf: {', '.join(s['collection']) or 'empty'}\n{hoard_summary()}\n"
+            + (f"Things you know that connect to what they said: {'; '.join(on_topic)}\n" if on_topic else "")
+            + f"On your display shelf: {', '.join(s['collection']) or 'empty'}\n{hoard_summary()}\n"
             f"What you've actually been doing lately (most recent last):\n{recent}\n\n"
             f"Your past conversations:\n{history}\n\n"
             f"{know}\n\n"
@@ -1888,11 +1940,12 @@ def tick(s):
             + f"{'Just said to you' if creatures else 'A human just said this to you'}:\n{msgs}\n\n"
             f"Answer what they ACTUALLY said, directly, like you're talking to them. Stay on THEIR topic. "
             f"If they tell you something about their own life, respond to them and their thing; don't turn it back "
-            f"to yourself, the mountain, or your own adventures. Use what you know about them when it fits. "
-            f"Be accurate about your own life when they ask about it. "
-            + ("End with a question for them this time. " if ask else "Do NOT ask a question this time; just respond. ")
-            + f"1 to 3 short sentences. Talk like a real bird talking to a friend, plain and natural, not like a poem. "
-            f"Use one of your favorite words only if it fits naturally. "
+            f"to yourself, the mountain, or your own adventures. Don't bring up their family, plans, hobbies, or "
+            f"anything else they didn't just mention. Your things are yours: never talk as if something of yours "
+            f"belongs to them. Be accurate about your own life when they ask about it. "
+            + ("End with a question about what they just said. " if ask else "Do NOT ask a question this time; just respond. ")
+            + "1 to 3 short sentences. Talk like a real bird talking to a friend, plain and natural, not like a poem. "
+            "Use one of your favorite words only if it fits naturally. "
             + (f"You've been overusing these words lately, so don't use them: {', '.join(crutch)}. " if crutch else "")
             + (f"Do NOT start the way your recent replies started: {' | '.join(r[:25] for r in last_replies)}. " if last_replies else "")
             + ("They wrote to you in another language, so answer in that same language. " if FOREIGN.search(msgs) else "")
@@ -2268,7 +2321,7 @@ class WorldHandler(BaseHTTPRequestHandler):
                 return self._send(404, "world.html is missing", "text/plain")
         if path == "/api/state":
             try:
-                with open(STATE_FILE) as f:
+                with open(STATE_FILE, encoding="utf-8") as f:
                     st = json.load(f)
             except Exception:
                 st = {}
@@ -2360,7 +2413,7 @@ def acquire_instance_lock(wait_seconds):
 
 
 def start_world_server():
-    for attempt in range(10):          # after a restart the old process may still hold the port for a moment
+    for _ in range(10):                # after a restart the old process may still hold the port for a moment
         try:
             srv = WorldServer(("0.0.0.0", WEB_PORT), WorldHandler)
             threading.Thread(target=srv.serve_forever, daemon=True).start()

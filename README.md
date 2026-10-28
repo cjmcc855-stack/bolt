@@ -8,7 +8,7 @@ Built by Caelan, inspired by "Pino," an AI bird living in a 3D web town.
 - Lives in 14 places (nest, junkyard, rail yard, river canyon, lake, mountain trail, summit, old barn, machine shop, drift lot, and more), with **real Mount Shasta weather**, seasons, and day/night.
 - Fishes, sifts river gravel for gems, digs on the mountain, forages, tinkers junk into named inventions, takes them apart, examines things, flattens pennies on the tracks. Skills level up.
 - Reads books from `library/`, looks things up on Wikipedia, writes songs (synth WAVs) and draws (SVG).
-- Remembers everything: a forever memory book, an unlimited hoard (gifts can never be lost), subject notebooks, per-item knowledge, and what each person has told him. Studying counts like practice.
+- Remembers everything: a forever memory book, an unlimited hoard (gifts can never be lost), subject notebooks, per-item knowledge, and what each person has told him. Studying counts like practice, and reading can correct something he got wrong (he keeps what he used to think).
 - Talks to people through Discord, his console window, and his web "world."
 
 ## Requirements
@@ -27,7 +27,7 @@ Optional Discord: copy `discord_config.example.json` to `discord_config.json`, f
 `bolt_launcher.py` is a tiny always-on helper for `!start` / `!stop` / `!status` from Discord.
 
 ### Discord commands
-Anyone: just type to talk · `!give <thing>` · `!leave <place> <thing>` · `!call <place>` · `!help`
+Anyone: just type to talk · `!give <thing>` · `!leave <place> <thing>` · `!call <place>` (he flies right over unless he's worn out; plain `!call` lists the places) · `!help`
 Owner only: `!book <title>` (fetch a public-domain book) · `!restart` · `!start` · `!stop` · `!status`
 
 ### Sharing a channel with other creatures
@@ -46,9 +46,10 @@ Running your own creature from this code: change `NAME` and `HUMAN` at the top o
 ## Safety and robustness
 - GPU watchdog: pauses at 80°C, emergency shutdown at 87°C (model unloaded, lock left so he won't restart until it cools).
 - Every tick is all-or-nothing; saves are atomic with backups; one instance at a time.
-- `tests/sim_days.py` runs days of his life in seconds with a chaotic fake brain, crashes, power cuts and outages, and checks that nothing breaks. `!restart` runs it first and refuses to restart into broken code:
+- `tests/sim_days.py` runs days of his life in seconds with a chaotic fake brain, crashes, power cuts and outages, and checks that nothing breaks (any real crash counts as a failure). `tests/creature_loop_test.py` checks the Discord loop protection. `!restart` runs both first and refuses to restart into broken code:
 ```
 python tests/sim_days.py .
+python tests/creature_loop_test.py
 ```
 
 ## What's not in this repo

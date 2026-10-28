@@ -9,15 +9,22 @@ hoard.json*
 memory_book.jsonl
 diary.md
 temps.csv
-names.json
-old_names.json
+creature_log.txt
 bolt.alive
 overheat.lock
 stop.flag
 restart.flag
+
+# --- per-install setup (copy the .example files) ---
+names.json
+old_names.json
+creatures.json
+
+# --- inbox files ---
 *.pending
 offerings.txt
 talk.txt
+creature_talk.txt
 placements.txt
 calls.txt
 book_requests.txt
@@ -31,6 +38,3 @@ library/Steep_Trails.txt
 
 __pycache__/
 *.pyc
-creature_talk.txt
-creatures.json
-creature_log.txt

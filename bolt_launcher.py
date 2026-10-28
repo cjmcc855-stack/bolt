@@ -3,10 +3,11 @@
 bolt_launcher.py - tiny always-on helper that lets you start/stop Bolt from Discord.
 Uses no GPU. Only listens to the owner (HUMAN in creature.py), mapped in names.json.
 
-Discord commands (Caelan only):
-  /start   wake Bolt up (refuses if the GPU is still hot)   ('/start bolt' targets him by name)
-  /stop    put Bolt to sleep and unload the model
-  /status  is he running, GPU temp, overheat lock?
+Discord commands (owner only; ! or / both work):
+  !start   wake him up (refuses if the GPU is still hot after an overheat)
+  !stop    put him to sleep and unload the model
+  !status  is he running, GPU temp, overheat lock?
+Add his name ("!stop bolt") when other creatures share the channel; commands naming someone else are ignored.
 
 Run it by double-clicking. Leave its window open (minimized is fine).
 """
