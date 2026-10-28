@@ -31,3 +31,5 @@ library/Steep_Trails.txt
 
 __pycache__/
 *.pyc
+creature_talk.txt
+creatures.json

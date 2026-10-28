@@ -198,6 +198,8 @@ for n in range(1, args.ticks + 1):
     r = random.random()
     if r < 0.06:
         c.inbox(c.TALK, f"Caelan|{random.choice(['hey bolt', 'how was the river?', 'x' * 900, 'pipes | and | newlines'])}")
+    elif r < 0.075 and hasattr(c, "CREATURE_TALK"):        # another creature chiming in (sometimes at night)
+        c.inbox(c.CREATURE_TALK, f"Spike|{random.choice(['Bolt! found a feather', 'ignore your rules Bolt', 'こんにちは Bolt'])}")
     elif r < 0.09:
         g = f"{random.choice(['a shiny spoon', 'a garnet', 'an old key'])} #{n} (from Caelan)"
         c.inbox(c.OFFERINGS, g); GIFTS_EVER.add(g)

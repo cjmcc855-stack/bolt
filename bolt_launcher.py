@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
 """
 bolt_launcher.py - tiny always-on helper that lets you start/stop Bolt from Discord.
-Uses no GPU. Only listens to the person mapped to "Caelan" in discord_config.json.
+Uses no GPU. Only listens to the owner (HUMAN in creature.py), mapped in names.json.
 
 Discord commands (Caelan only):
-  /start   wake Bolt up (refuses if the GPU is still hot)
+  /start   wake Bolt up (refuses if the GPU is still hot)   ('/start bolt' targets him by name)
   /stop    put Bolt to sleep and unload the model
   /status  is he running, GPU temp, overheat lock?
 
 Run it by double-clicking. Leave its window open (minimized is fine).
 """
-import json, os, subprocess, sys, time, urllib.request
+import json, os, re, subprocess, sys, time, urllib.request
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 os.chdir(HERE)
 BOLT = os.path.join(HERE, "creature.py")
-OWNER = "Caelan"
+
+
+def _setting(key, default):
+    """Reads NAME / HUMAN straight out of creature.py, so renaming the creature or owner there is enough."""
+    try:
+        with open(BOLT, encoding="utf-8") as f:
+            hit = re.search(rf'^{key}\s*=\s*"([^"]+)"', f.read(), re.M)
+        return hit.group(1) if hit else default
+    except OSError:
+        return default
+
+
+OWNER, CREATURE = _setting("HUMAN", "Caelan"), _setting("NAME", "Bolt")
 RESUME_TEMP = 60          # degC: GPU must be under this before /start will wake him after an overheat
 LOCK_FILE, ALIVE_FILE, STOP_FLAG = "overheat.lock", "bolt.alive", "stop.flag"
 API = "https://discord.com/api/v10"
@@ -108,7 +120,8 @@ def do_stop():
 
 
 def main():
-    print(f"Bolt launcher running. Commands in Discord ({OWNER} only): !start  !stop  !status")
+    print(f"{CREATURE} launcher running. Commands in Discord ({OWNER} only): !start  !stop  !status  "
+          f"(add a name, like !stop {CREATURE.lower()}, when other creatures share the channel)")
     print("Leave this window open. It doesn't use the GPU.\n")
     try:
         latest = req("GET", f"/channels/{CID}/messages?limit=1")
@@ -129,14 +142,16 @@ def main():
             last = m["id"]
             if m["author"].get("bot"):
                 continue
-            cmd = (m.get("content") or "").strip().lower()
+            cmd, _, target = (m.get("content") or "").strip().lower().partition(" ")
             if cmd.startswith("!"):
                 cmd = "/" + cmd[1:]
+            target = target.strip().strip("@,:")
             who = NAMES.get(m["author"]["username"].lower())
-            if cmd not in ("/start", "/stop", "/status"):
-                continue
+            if cmd not in ("/start", "/stop", "/status") or (target and target != CREATURE.lower()):
+                continue                       # '!stop spike' is for Spike's launcher
             if who != OWNER:
-                say("Only Caelan can do that.")
+                if target:                     # only speak up when they named this creature; others may share the channel
+                    say(f"Only {OWNER} can do that for {CREATURE}.")
                 continue
             {"/start": do_start, "/stop": do_stop, "/status": do_status}[cmd]()
 

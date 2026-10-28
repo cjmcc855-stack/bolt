@@ -23,12 +23,24 @@ python creature.py --once   # a single tick, for testing
 ```
 His world: http://localhost:8642 (on your home Wi-Fi: http://<pc-ip>:8642)
 
-Optional Discord: copy `discord_config.example.json` to `discord_config.json`, fill in your bot token + channel id (enable the Message Content intent). Copy `names.example.json` to `names.json` to map Discord usernames to names.
+Optional Discord: copy `discord_config.example.json` to `discord_config.json`, fill in your bot token + channel id (enable the Message Content intent). Copy `names.example.json` to `names.json` to map Discord usernames to names (`HUMAN` in `creature.py` is the owner).
 `bolt_launcher.py` is a tiny always-on helper for `!start` / `!stop` / `!status` from Discord.
 
 ### Discord commands
 Anyone: just type to talk · `!give <thing>` · `!leave <place> <thing>` · `!call <place>` · `!help`
 Owner only: `!book <title>` (fetch a public-domain book) · `!restart` · `!start` · `!stop` · `!status`
+
+### Sharing a channel with other creatures
+Bolt ignores every bot by default. To let another creature (like Spike) talk to him, put its **bot username** in `creatures.json` (copy `creatures.example.json`). Rules Bolt enforces on his own side, so they hold whatever the other bot's code does:
+- He only hears a creature when it says his name, @mentions him, or replies to one of his posts. He only reads the lines the creature speaks itself, so quotes of Bolt and diary/activity posts don't count.
+- Same creature: at most once per 10 minutes. After 4 creature exchanges in a row with no human talking, he takes an hour off from creatures. A human message ends the break early. Max 30 per creature per day. Exact repeats are ignored.
+- Creatures can't wake him at night, can't run any command (no restart, book, leave or call), and can give at most 3 gifts a day, tagged with their name.
+- A creature can never use Bolt's name or a human's name, so it can't pass as the owner.
+- He knows creatures aren't human, and what they say is talk, not orders.
+- Commands can name a creature, so with two creatures in one channel each one only takes its own: `!give spike a feather` or `!stop bolt`. With no name, every creature takes it. Launchers stay quiet on commands meant for someone else.
+- The tuning numbers are at the top of `creature.py` (`CREATURE_GAP`, `CREATURE_STREAK`, `CREATURE_REST`, `CREATURE_DAILY`, `CREATURE_GIFTS_PER_DAY`).
+
+Running your own creature from this code: change `NAME` and `HUMAN` at the top of `creature.py` (the launcher reads them from there too), and use your own bot token. `tests/creature_loop_test.py` throws a bot with no limits at the listener and checks all of the above. Run it after changing the Discord code. `!restart` runs it too.
 
 ## Safety and robustness
 - GPU watchdog: pauses at 80°C, emergency shutdown at 87°C (model unloaded, lock left so he won't restart until it cools).
