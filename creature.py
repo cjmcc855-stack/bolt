@@ -124,10 +124,10 @@ STATE_FILE, DIARY, OFFERINGS, TALK = "state.json", "diary.md", "offerings.txt", 
 PLACEMENTS, CALLS = "placements.txt", "calls.txt"   # from the world page: items left at places, calls to come over
 CREATURE_TALK = "creature_talk.txt"   # what other creatures (other people's bots) say to him, kept apart from humans
 # Loop protection for talking with other creatures (e.g. Spike). These hold even if the other bot has no limits.
-CREATURE_GAP = 600              # seconds: hears the same creature at most once per 10 minutes
-CREATURE_STREAK = 4             # back-and-forths with creatures in a row with no human talking...
-CREATURE_REST = 3600            # ...then he ignores creatures for an hour, or until a human says something
-CREATURE_DAILY = 30             # most things he'll answer from one creature in a day, humans or not
+CREATURE_GAP = 30               # seconds: talks at normal speed; this only folds a burst of messages into the newest one
+CREATURE_STREAK = 8             # back-and-forths with creatures in a row with no human talking...
+CREATURE_REST = 1800            # ...then he ignores creatures for 30 minutes, or until a human says something
+CREATURE_DAILY = 60             # most things he'll answer from one creature in a day, humans or not
 CREATURE_GIFTS_PER_DAY = 3      # gifts he'll accept from each creature per day
 WEB_PORT = 8642                 # open http://localhost:8642 to see Bolt's world
 HUMAN = "Caelan"                # what Bolt calls you
@@ -612,7 +612,7 @@ class CreatureGuard:
             return "taking a break from creature chatter"
         if t - self.last.get(who, 0) < CREATURE_GAP:
             self.waiting[who] = words                  # newest one waits its turn, so a quick reply isn't lost
-            return "too soon, saved for when the 10 minutes are up"
+            return "too soon, saved for a moment later"
         if not key or key in self.seen:
             return "repeat"
         day = (who, datetime.fromtimestamp(t).date())

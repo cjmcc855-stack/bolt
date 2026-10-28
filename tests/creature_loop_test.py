@@ -113,10 +113,11 @@ print("1. a Spike with no limits, 16 waking hours, no humans around")
 w = World(16, spike=chatty_spike, script=[(datetime(2026, 10, 29, 6, 0, 30).timestamp(), ("spike_bot", SPIKE, "**Spike:** morning Bolt", True))])
 run(w)
 r = w.bolt_replies
-worst_hour = max((sum(1 for x in r if a <= x < a + 3600) for a in r), default=0)
+runs = [r[i:i + c.CREATURE_STREAK + 1] for i in range(len(r) - c.CREATURE_STREAK)]
 check(0 < len(r) <= c.CREATURE_DAILY, f"Bolt answered {len(r)} times in a day (cap {c.CREATURE_DAILY})")
-check(worst_hour <= c.CREATURE_STREAK, f"busiest hour had {worst_hour} answers (cap {c.CREATURE_STREAK})")
-check(all(b - a >= c.CREATURE_GAP for a, b in zip(r, r[1:])), "never answered Spike twice within 10 minutes")
+check(all(any(b - a >= c.CREATURE_REST for a, b in zip(x, x[1:])) for x in runs),
+      f"never more than {c.CREATURE_STREAK} in a row without a {c.CREATURE_REST // 60}-minute break")
+check(all(b - a >= c.CREATURE_GAP for a, b in zip(r, r[1:])), f"never answered Spike twice within {c.CREATURE_GAP} seconds")
 
 print("1b. a well-behaved Spike that answers Bolt a minute later (a real conversation)")
 
@@ -146,10 +147,11 @@ def sleep_and_tick(secs):
 w.sleep = sleep_and_tick
 run(w)
 r = w.bolt_replies
-check(len(r) >= c.CREATURE_STREAK, f"quick replies wait their turn instead of vanishing: Bolt answered {len(r)} times in 3 hours")
-check(all(b - a >= c.CREATURE_GAP for a, b in zip(r, r[1:])), "still never twice within 10 minutes")
+first = [x for x in r if x - r[0] < 900] if r else []
+check(len(first) >= c.CREATURE_STREAK, f"talks at normal speed: {len(first)} exchanges in the first 15 minutes")
+check(len(r) == c.CREATURE_STREAK, f"then takes his break: {len(r)} answers in 3 hours, since a polite Spike only answers him")
 log = open(c.CREATURE_LOG, encoding="utf-8").read() if os.path.exists(c.CREATURE_LOG) else ""
-check("answered (after waiting its turn)" in log, "creature_log.txt records what he did with each Spike post")
+check("->  answered" in log and "taking a break" in log, "creature_log.txt records what he did with each Spike post")
 
 print("2. the same message spammed every few seconds")
 script = [(datetime(2026, 10, 29, 6, 0).timestamp() + 7 * i, ("spike_bot", SPIKE, "**Spike:** BOLT BOLT BOLT", True)) for i in range(400)]
@@ -217,9 +219,9 @@ check(talk == ["Caelan|hey spike, what about bolt?", "Caelan|hey everyone"], f"'
 g = c.CreatureGuard()
 for i in range(c.CREATURE_STREAK):
     g.hear("Spike", f"message about {WORDS[i]}", base + i * 700)
-check(g.hear("Spike", "one more", base + 5 * 700) is not None, "goes quiet after a long bot-only back-and-forth")
+check(g.hear("Spike", "one more", base + (c.CREATURE_STREAK + 1) * 700) is not None, "goes quiet after a long bot-only back-and-forth")
 g.human_spoke()
-check(g.hear("Spike", "after a human", base + 6 * 700) is None, "a human talking ends the break")
+check(g.hear("Spike", "after a human", base + (c.CREATURE_STREAK + 2) * 700) is None, "a human talking ends the break")
 
 os.chdir("/")
 shutil.rmtree(WORK, ignore_errors=True)
