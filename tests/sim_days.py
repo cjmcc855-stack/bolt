@@ -96,7 +96,7 @@ def junk():
     return random.choice(["", "lol", "{not json", "[1,2,3]", '"just a string"', "null", "{}", '{"action": 7}', "x" * 5000])
 
 
-def brain(prompt, json_mode=True, temp=0.9):
+def brain(prompt, json_mode=True, temp=0.9, **kw):   # **kw: options the real call_llm grows later
     prompt = c.fit_prompt(prompt)
     PROMPT_SIZES.append(len(c.PERSONA) + len(prompt))
     roll = random.random()
@@ -155,6 +155,7 @@ for m in mods:
 
 # ---------------- run ----------------
 problems = []
+UNEXPECTED = {}     # exception type -> where it happened (anything that isn't a simulated outage)
 GIFTS_EVER = set()
 
 
@@ -220,6 +221,9 @@ for n in range(1, args.ticks + 1):
         failures += 1
         STATS["ticks failed (retried later)"] += 1
         STATS[f"fail: {type(e).__name__}"] += 1
+        if not isinstance(e, (OSError, ConnectionError)) and type(e).__name__ not in UNEXPECTED:
+            import traceback                              # a real bug, not a simulated outage: show where
+            UNEXPECTED[type(e).__name__] = traceback.format_exc().strip().splitlines()[-3:]
         # like the real Bolt: memory is reloaded from disk after a failure
         if random.random() < 0.3:
             c.HOARD = None
@@ -290,7 +294,11 @@ for k, v in sorted(STATS.items()):
     print(f"  {k}: {v}")
 print(f"  largest prompt: {max(PROMPT_SIZES)} chars (budget {c.PROMPT_BUDGET})")
 print(f"  skills: {s2.get('skills')}  | hoard kinds: {len(c.hoard()['items'])}  | memory book: {c.book_overview()[0]}")
-print(f"  gifts given: {len(GIFTS_EVER)}  | gifts in hoard: {sum(1 for v in c.hoard()['items'].values() if v['gift'])}")
+print(f"  gifts handed over: {len(GIFTS_EVER)}  | gifts in hoard: {sum(1 for v in c.hoard()['items'].values() if v['gift'])}")
+for name, where in UNEXPECTED.items():
+    problems.append(f"ticks crashed with {name}: " + " | ".join(l.strip() for l in where))
+if STATS["ticks ok"] < args.ticks * 0.5:
+    problems.append(f"only {STATS['ticks ok']} of {args.ticks} ticks succeeded")
 over = [p for p in PROMPT_SIZES if p > c.PROMPT_BUDGET + 200]
 if over:
     problems.append(f"{len(over)} prompts over budget (max {max(over)})")

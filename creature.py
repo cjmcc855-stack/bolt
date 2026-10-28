@@ -1754,15 +1754,33 @@ def tick(s):
         place, item, who = (line.split("|") + ["", ""])[:3]
         if place in PLACES and item.strip():
             s["placed"].setdefault(place, []).append(item.strip() if not who or who == HUMAN else f"{who}::{item.strip()}")
-    found_here = s["placed"].pop(loc, [])                  # he finds whatever was left where he is
-    for i in found_here:
-        who, _, item = i.rpartition("::")
-        gifts.append(f"{item} (left by {who or HUMAN} at the {loc})")
     calls = []
     for line in take_lines(CALLS):
         who, _, place = line.partition("|")
         if place in PLACES:
             calls.append((who or HUMAN, place))
+    call_note = ""
+    for who, place in calls[-1:]:                           # someone called him over: he comes, unless he's spent
+        nice = place.replace("_", " ")
+        if place == loc:
+            call_note, seen = f"{who} called you, and you were already right here at the {nice}.", "was already there"
+        elif s["energy"] < 15:
+            call_note, seen = f"{who} called you over to the {nice}, but you were too worn out to fly.", "was too worn out to fly"
+        else:
+            route = ["mountain_trail", "summit"] if place == "summit" and loc != "mountain_trail" else [place]
+            for step in route:
+                went = execute("go", step, s, event)
+            if s["location"] == place:
+                call_note, seen = f"{who} called you over to the {nice}, so you flew there to be with them.", "flew right over"
+            else:
+                call_note, seen = f"{who} called you over to the {nice}. You tried, but: {went}.", f"tried, but {went}"
+            loc = s["location"]
+            event = pick_event(loc)
+        diary(f"**{now()}** 👋 {who} called {NAME} to the {nice}. He {seen}.\n")
+    found_here = s["placed"].pop(loc, [])                  # he finds whatever was left where he is
+    for i in found_here:
+        who, _, item = i.rpartition("::")
+        gifts.append(f"{item} (left by {who or HUMAN} at the {loc})")
     shiny = [p for p, items in s["placed"].items() if items]
     ate = []
     for g in gifts:
@@ -1842,7 +1860,7 @@ Things you know about this place: {"; ".join(relevant_notes(s, loc)) or "nothing
 Your notebooks: {", ".join(f"{k} ({len(v)} notes)" for k, v in s["notebooks"].items() if v) or "empty"}
 What you've done most lately: {", ".join(f"{a} x{n}" for a, n in sorted(((a, s['recent_actions'].count(a)) for a in set(s['recent_actions'])), key=lambda x: -x[1])[:4]) or "nothing yet"}
 {("You can see something shiny glinting over at: " + ", ".join(shiny) + ".") if shiny else ""}
-{" ".join(f"{w} is at the {p}, waving and calling you to come over." for w, p in calls)}
+{("Just now: " + call_note + " They're here with you, so whatever you do next, they get to see it.") if call_note and s["location"] == calls[-1][1] else call_note}
 Recent memories:
 {recent}
 
@@ -1911,7 +1929,7 @@ Do whatever YOU feel like. Respond ONLY with JSON:
                or any(k in outcome for k in ("record", "level up", "went up to level", "built", "flattened", "real gold", "smoky quartz")))
     kind = "talk" if heard else "gift" if gifts else "first" if first_visit else "moment"
     memory_entry = {"when": now(), "where": s["location"], "feeling": feeling, "kind": kind, "special": special,
-                    "text": f"{gift_note}{convo}{outcome}. {reflection}" + (" (my first time here!)" if first_visit else "")}
+                    "text": f"{call_note + ' ' if call_note else ''}{gift_note}{convo}{outcome}. {reflection}" + (" (my first time here!)" if first_visit else "")}
     if heard:
         lines = "\n".join(f"**{w}:** {m}" for w, m in heard)
         diary(f"**{now()}**\n{lines}\n**{NAME}:** {reply or '(just stares at you)'}\n")
