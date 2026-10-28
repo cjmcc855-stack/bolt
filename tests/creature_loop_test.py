@@ -64,7 +64,7 @@ class World:
             raise Stop
         while self.script and self.script[0][0] <= self.t:     # scheduled human/bot posts
             _, args = self.script.pop(0)
-            self.post(*args[:3], bot=args[3] if len(args) > 3 else False)
+            self.post(*args[:3], bot=args[3] if len(args) > 3 else False, mentions=args[4] if len(args) > 4 else ())
         heard = c.take_lines(c.CREATURE_TALK)                   # "Bolt's tick": answer what got through
         c.clear_pending()
         for line in heard:
@@ -212,10 +212,12 @@ check(gifts == ["a shiny rock (from Caelan)"], f"'!give spike' skipped, '!give b
 check(not c.RESTART.is_set(), "'!restart spike' doesn't restart Bolt")
 script = [(base + 10, ("actuallyputin", "9", "Hi Spike!")), (base + 20, ("actuallyputin", "9", "hey spike, what about bolt?")),
           (base + 30, ("actuallyputin", "9", "hey everyone"))]
+script.insert(0, (base + 5, ("actuallyputin", "9", f"<@{ME}> introduce yourself to Spike!", False, [ME])))
 w = World(1, script=script)
 run(w)
 talk = [l for l in open(c.TALK).read().splitlines() if "seed" not in l] if os.path.exists(c.TALK) else []
-check(talk == ["Caelan|hey spike, what about bolt?", "Caelan|hey everyone"], f"'Hi Spike!' left for Spike, the rest heard: {talk}")
+check(talk == ["Caelan|Bolt introduce yourself to Spike!", "Caelan|hey spike, what about bolt?", "Caelan|hey everyone"],
+      f"'Hi Spike!' left for Spike; '@Bolt ... Spike' and the rest heard: {talk}")
 g = c.CreatureGuard()
 for i in range(c.CREATURE_STREAK):
     g.hear("Spike", f"message about {WORDS[i]}", base + i * 700)

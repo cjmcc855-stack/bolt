@@ -673,11 +673,22 @@ def aimed_elsewhere(arg, others):
     return tag in others, arg.strip()
 
 
-def for_another_creature(m, text):
+def readable_mentions(m, text, my_id):
+    """'<@1564901862061117483> hi' -> 'Bolt hi', so he reads names, not ID numbers."""
+    creatures, people = fellow_creatures(), discord_names()
+    for u in m.get("mentions") or []:
+        user = (u.get("username") or "").lower()
+        name = (NAME if u.get("id") == my_id else creatures.get(user) or people.get(user)
+                or u.get("global_name") or u.get("username") or "someone")
+        text = re.sub(rf"<@!?{re.escape(str(u.get('id')))}>", name, text)
+    return text
+
+
+def for_another_creature(m, text, my_id=None):
     """'Hi Spike!' is for Spike: a human message that names, @'s, or replies to another creature,
-    and doesn't mention Bolt, is left for that creature to answer."""
+    and doesn't mention Bolt (by name, @, or reply), is left for that creature to answer."""
     others = fellow_creatures()
-    if not others or re.search(rf"\b{re.escape(NAME)}\b", text, re.I):
+    if not others or re.search(rf"\b{re.escape(NAME)}\b", text, re.I) or calls_me(m, "", my_id):
         return False
     if any((u.get("username") or "").lower() in others for u in m.get("mentions") or []):
         return True
@@ -804,8 +815,8 @@ def discord_listener():
                 continue   # /start, /stop, /status belong to the launcher
             if text.lower().startswith("/give "):
                 inbox(OFFERINGS, f"{re.sub(r'[|]', ' ', text[6:].strip())[:200]} (from {who})")
-            elif not for_another_creature(m, text):
-                inbox(TALK, f"{who}|{re.sub(r'[|]', ' ', text)[:1500]}")
+            elif not for_another_creature(m, text, my_id):
+                inbox(TALK, f"{who}|{re.sub(r'[|]', ' ', readable_mentions(m, text, my_id))[:1500]}")
 
 
 # ---------------- ACTIONS ----------------
