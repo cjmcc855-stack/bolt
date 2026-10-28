@@ -1277,14 +1277,20 @@ def do_activity(action, target, s):
             parts = random.sample(pool, 2)
         if random.random() > min(0.9, 0.5 + 0.08 * lvl):
             return f"tried to combine the {parts[0]} and the {parts[1]} but it fell apart" + train(s, skill, 1)
+        built = s.setdefault("inventions", [bare(c) for c in hoard()["items"] if "(made from " in c][-8:])
         r = parse_json(call_llm(
             f"You're tinkering at the {loc}, combining a {parts[0]} and a {parts[1]} into something new. "
             f"Your tinkering skill is level {lvl}. "
             + (f"What you know that could help: {'; '.join(recall(s, 'tinker', parts[0] + ' ' + parts[1], 6))}. Use it. "
                if recall(s, 'tinker', parts[0] + ' ' + parts[1], 6) else "")
+            + f"The thing is made ONLY of the {base_name(parts[0])} and the {base_name(parts[1])}: it can only do what those "
+            "two parts could really do together. Nothing else you own is part of it. "
+            + (f"Things you've already built: {'; '.join(built[-8:])}. Make something with a DIFFERENT purpose than "
+               "those, not another version of the same idea. " if built else "")
             + "Make it something that actually works and has a purpose. What did you make? Respond ONLY with JSON: "
             '{"name": "short name of the thing you made", "what_it_does": "one short sentence"}', temp=0.9))
         name = re.sub(r"[()|]", "", str(r.get("name") or "strange contraption")).strip()[:60] or "strange contraption"
+        s["inventions"] = (built + [f"{name} ({clip(r.get('what_it_does', ''), 80).rstrip('.')})"])[-30:]
         for p_ in parts:
             take_item(s, p_)
         a, b = base_name(parts[0]), base_name(parts[1])
