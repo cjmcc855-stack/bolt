@@ -81,7 +81,7 @@ def now(t):
 
 def run(world):
     for p in os.listdir("."):
-        if p.endswith((".txt", ".pending")):
+        if p.endswith((".txt", ".pending")):        # includes creature_log.txt
             os.remove(p)
     c.GUARD = c.CreatureGuard()
     c.AWAKE.set()
@@ -117,6 +117,39 @@ worst_hour = max((sum(1 for x in r if a <= x < a + 3600) for a in r), default=0)
 check(0 < len(r) <= c.CREATURE_DAILY, f"Bolt answered {len(r)} times in a day (cap {c.CREATURE_DAILY})")
 check(worst_hour <= c.CREATURE_STREAK, f"busiest hour had {worst_hour} answers (cap {c.CREATURE_STREAK})")
 check(all(b - a >= c.CREATURE_GAP for a, b in zip(r, r[1:])), "never answered Spike twice within 10 minutes")
+
+print("1b. a well-behaved Spike that answers Bolt a minute later (a real conversation)")
+
+
+class Polite:
+    def __init__(self): self.due = None
+
+    def __call__(self, w):
+        if w.msgs[-1]["author"]["id"] == ME and self.due is None:
+            self.due = w.t + 60
+        if self.due and w.t >= self.due:
+            self.due = None
+            chatty_spike(w)
+
+
+w = World(3, script=[(datetime(2026, 10, 29, 6, 0, 30).timestamp(), ("spike_bot", SPIKE, "**Spike:** morning Bolt", True))])
+polite = Polite()
+w.spike = lambda w: polite(w)
+w_sleep = w.sleep
+
+
+def sleep_and_tick(secs):
+    w_sleep(secs)
+    polite(w)
+
+
+w.sleep = sleep_and_tick
+run(w)
+r = w.bolt_replies
+check(len(r) >= c.CREATURE_STREAK, f"quick replies wait their turn instead of vanishing: Bolt answered {len(r)} times in 3 hours")
+check(all(b - a >= c.CREATURE_GAP for a, b in zip(r, r[1:])), "still never twice within 10 minutes")
+log = open(c.CREATURE_LOG, encoding="utf-8").read() if os.path.exists(c.CREATURE_LOG) else ""
+check("answered (after waiting its turn)" in log, "creature_log.txt records what he did with each Spike post")
 
 print("2. the same message spammed every few seconds")
 script = [(datetime(2026, 10, 29, 6, 0).timestamp() + 7 * i, ("spike_bot", SPIKE, "**Spike:** BOLT BOLT BOLT", True)) for i in range(400)]

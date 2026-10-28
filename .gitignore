@@ -33,3 +33,4 @@ __pycache__/
 *.pyc
 creature_talk.txt
 creatures.json
+creature_log.txt

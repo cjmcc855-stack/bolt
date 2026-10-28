@@ -597,7 +597,7 @@ class CreatureGuard:
     what the other creature's code does."""
     def __init__(self):
         self.last, self.seen, self.gifts, self.daily = {}, collections.deque(maxlen=30), {}, {}
-        self.streak, self.quiet_until, self.said_why = 0, 0.0, {}
+        self.streak, self.quiet_until, self.said_why, self.waiting = 0, 0.0, {}, {}
 
     def human_spoke(self):
         self.streak, self.quiet_until = 0, 0.0
@@ -605,11 +605,14 @@ class CreatureGuard:
     def hear(self, who, words, t):
         key = re.sub(r"[^a-z]+", "", words.lower())[:200]
         if not AWAKE.is_set():
+            self.waiting.pop(who, None)
             return "he's asleep"
         if t < self.quiet_until:
+            self.waiting.pop(who, None)
             return "taking a break from creature chatter"
         if t - self.last.get(who, 0) < CREATURE_GAP:
-            return "too soon"
+            self.waiting[who] = words                  # newest one waits its turn, so a quick reply isn't lost
+            return "too soon, saved for when the 10 minutes are up"
         if not key or key in self.seen:
             return "repeat"
         day = (who, datetime.fromtimestamp(t).date())
@@ -624,6 +627,18 @@ class CreatureGuard:
             self.streak, self.quiet_until = 0, t + CREATURE_REST
         return None
 
+    def due(self, t):
+        """Saved messages whose wait is over: they get heard now (still under every other limit)."""
+        out = []
+        for who, words in list(self.waiting.items()):
+            if t - self.last.get(who, 0) >= CREATURE_GAP:
+                del self.waiting[who]
+                why = self.hear(who, words, t)
+                creature_log(who, words, why or "answered (after waiting its turn)")
+                if not why:
+                    out.append((who, words))
+        return out
+
     def gift_ok(self, who, t):
         day = (who, datetime.fromtimestamp(t).date())
         self.gifts = {k: v for k, v in self.gifts.items() if k[1] == day[1]}
@@ -632,6 +647,21 @@ class CreatureGuard:
 
 
 GUARD = CreatureGuard()
+CREATURE_LOG = "creature_log.txt"     # everything listed creatures post, and what Bolt did with it
+
+
+def creature_log(who, words, what):
+    try:
+        if os.path.exists(CREATURE_LOG) and os.path.getsize(CREATURE_LOG) > 500_000:
+            with open(CREATURE_LOG, encoding="utf-8") as f:
+                keep = f.read()[-250_000:]
+            with open(CREATURE_LOG, "w", encoding="utf-8") as f:
+                f.write(keep[keep.find("\n") + 1:])
+        flat = re.sub(r"\s+", " ", words)[:300]          # (kept out of the f-string: Python 3.10 needs that)
+        with open(CREATURE_LOG, "a", encoding="utf-8") as f:
+            f.write(f"{now()} {who}: {flat}  ->  {what}\n")
+    except OSError:
+        pass
 
 
 def aimed_elsewhere(arg, others):
@@ -662,15 +692,20 @@ def screen_creature(m, name, my_id, t):
     if text.startswith(("!", "/")):
         cmd, _, arg = text[1:].partition(" ")
         if cmd.lower() != "give":
+            creature_log(name, text, "ignored: creatures can't use commands")
             return None
         elsewhere, arg = aimed_elsewhere(arg, {c.lower() for c in fellow_creatures().values()})
-        if elsewhere or not arg.strip() or not GUARD.gift_ok(name, t):
+        ok = not elsewhere and arg.strip() and GUARD.gift_ok(name, t)
+        creature_log(name, text, "gift accepted" if ok else "gift refused (not for him, or 3 already today)")
+        if not ok:
             return None
         return OFFERINGS, f"{re.sub(r'[|]', ' ', arg.strip())[:200]} (from {name})"
     words = their_words(text, name)
     if not words or not calls_me(m, words, my_id):
+        creature_log(name, text, "not talking to Bolt" if words else "narration or quoting, not talk")
         return None
     why = GUARD.hear(name, words, t)
+    creature_log(name, words, why or "answered")
     if why != GUARD.said_why.get(name) and why:
         print(f"  (not answering {name}: {why})")        # once per reason, so a spammy bot can't flood the console
     GUARD.said_why[name] = why
@@ -700,6 +735,8 @@ def discord_listener():
             print(f"  (Discord read hiccup: {e})")
             time.sleep(30)
             continue
+        for who, words in GUARD.due(time.time()):           # creature replies that waited out the 10 minutes
+            inbox(CREATURE_TALK, f"{who}|{re.sub(r'[|]', ' ', words)[:600]}")
         for m in sorted(msgs, key=lambda m: int(m["id"])):
             last = m["id"]
             user = m["author"]["username"]
