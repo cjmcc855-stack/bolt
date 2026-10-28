@@ -54,4 +54,4 @@ python tests/sim_days.py .
 Secrets (`discord_config.json`), and Bolt's actual life (`state.json`, `hoard.json`, `memory_book.jsonl`, `diary.md`, songs, drawings): those are personal and live only on his PC. Starting fresh hatches a brand new crow.
 
 ## Library
-Original field guides written for him: rocks & gems of Shasta, fishes, music theory for one voice, the crow book, animals of the high mountain, engines/cars/shops, drawing, tinkering, and fire safety. More can be fetched from Project Gutenberg with `!book`.
+Original field guides written for him: rocks & gems of Shasta, fishes, music theory for one voice, the crow book, animals of the high mountain, engines/cars/shops, drawing, tinkering, fire safety, and metal fabrication. More can be fetched from Project Gutenberg with `!book`.
