@@ -499,7 +499,8 @@ AWAKE.set()
 
 def has_talk():
     """Someone (a human or a creature) said something to him that he hasn't answered yet."""
-    return any(os.path.exists(p) and os.path.getsize(p) > 0 for q in (TALK, CREATURE_TALK) for p in (q, q + ".pending"))
+    return (any(os.path.exists(p) and os.path.getsize(p) > 0 for q in (TALK, CREATURE_TALK) for p in (q, q + ".pending"))
+            or TOWN.pending_talk())
 
 
 def peek_lines(path):
@@ -516,7 +517,8 @@ def peek_lines(path):
 
 def has_mail(creatures=True):
     paths = [OFFERINGS, TALK, CALLS] + ([CREATURE_TALK] if creatures else [])
-    return any(os.path.exists(p) and os.path.getsize(p) > 0 for q in paths for p in (q, q + ".pending"))
+    return (any(os.path.exists(p) and os.path.getsize(p) > 0 for q in paths for p in (q, q + ".pending"))
+            or (creatures and TOWN.pending_talk()))
 
 
 # ---------------- DISCORD ----------------
@@ -2012,6 +2014,21 @@ class LocalTown:
     This is Bolt's own copy of the town (exactly how it has always worked). A shared-world town (shasta-world)
     can replace it later with the same methods, and he keeps this one as his fallback when it's down."""
     name = "his own town"
+    online = False
+
+    def start(self, s):
+        """Once at startup, after his state is loaded."""
+
+    def look(self, s):
+        """At the start of each turn (and before a quick reply's answer goes out): see the town."""
+
+    def pending_talk(self):
+        """Creature talk waiting outside the creature_talk file (the shared town's inbox)."""
+        return False
+
+    def extra_places(self):
+        """Places beyond his own 14 he can fly to right now (Spike's fir, in the shared town)."""
+        return []
 
     def sky(self):
         return real_weather()
@@ -2037,7 +2054,7 @@ class LocalTown:
     def shiny(self, s):
         return [p for p, items in s["placed"].items() if items]
 
-    def creature_talk(self):
+    def creature_talk(self, s=None):
         """Other creatures talking to him: the newest line from each."""
         out = {}
         for line in take_lines(CREATURE_TALK):
@@ -2071,6 +2088,9 @@ class LocalTown:
     def after_reply(self, s, heard, reply):
         """What he just said to someone."""
 
+    def ready(self, s):
+        """Just before his outbox is sent (the shared town says hello first after an outage)."""
+
     def send(self, body):
         """Sends one queued action. Returns the town's answer, or None if there was no answer."""
         return {"ok": True, "id": body["id"]}
@@ -2087,17 +2107,174 @@ class LocalTown:
         """Applies the town's answer to a queued action (reply None = gave up on it)."""
 
 
-TOWN = LocalTown()
+WORLD_CONFIG = "world_config.json"     # the switch: {"enabled": true, "url": "http://...:8642", "token": "..."}
+DOING = {"fish": "fishing", "sift": "sifting the gravel", "dig": "digging in the rock", "scavenge": "scavenging",
+         "forage": "foraging", "tinker": "tinkering", "take_apart": "taking something apart", "draw": "drawing",
+         "make_music": "making up a song", "play_synth": "patching his synth", "read": "reading", "look_up": "reading",
+         "watch": "watching", "nap": "napping", "examine": "studying his things", "reminisce": "remembering",
+         "rearrange_collection": "fussing over his shelf", "penny_on_tracks": "putting a penny on the rails",
+         "think": "thinking"}
+
+
+class WorldTown(LocalTown):
+    """The shared town (shasta-world), through world_client.py. Anything the shared town can't answer right
+    now (it's away, or it doesn't do that) falls back to his own town, so he never waits and never breaks.
+    What it remembers between turns lives in s["world"], saved with the rest of him, all or nothing."""
+    name = "the shared town"
+
+    def __init__(self, url, token):
+        import world_client
+        self.wc = world_client.WorldClient(url, token, "bolt", log=lambda m: print(f"[{now()}] shared town: {m}"))
+        self.seen, self.start_loc, self.voices, self._heard_after = None, None, {}, 0
+
+    @property
+    def online(self):
+        return self.seen is not None and self.wc.online
+
+    def start(self, s):
+        self.wc.start_polling(s.setdefault("world", {}))
+
+    def look(self, s):
+        ws = s.setdefault("world", {})
+        awake = not s.get("asleep_until")
+        self.seen = self.wc.look(ws, s["location"], awake)
+        self.start_loc = s["location"]
+        if self.seen is not None and ws.get("awake", True) != awake:
+            queue_action(s, "presence", awake=awake)
+        if self.seen is not None:
+            ws["awake"] = awake
+
+    def ready(self, s):
+        """Runs after a step was saved: what it heard is handled now, and the town hears where he is first."""
+        self._heard_after = s.get("world", {}).get("after", 0)
+        if self.wc.needs_hello:
+            self.look(s)
+
+    def pending_talk(self):
+        with self.wc._lock:
+            return any(h["seq"] > self._heard_after for h in self.wc._heard)
+
+    def extra_places(self):
+        return list(OTHER_PLACES) if self.online else []
+
+    def sky(self):
+        w = (self.seen or {}).get("weather")
+        if w and w.get("kind") in WEATHER and isinstance(w.get("temp_f"), (int, float)):
+            return {"kind": w["kind"], "temp_f": w["temp_f"], "wind_mph": w.get("wind_mph", 0), "real": True}
+        return super().sky()
+
+    def take_hidden(self, s):
+        """A human's !leave (or the world page) becomes a hide in the shared town, kept for Bolt when it's
+        from his human. If the town turns it down, it goes back into his own town (on_reply), so it's never lost."""
+        for line in take_lines(PLACEMENTS):
+            place, item, who = (line.split("|") + ["", ""])[:3]
+            item, who = clip(item.strip(), 60), (who.strip() or HUMAN)[:32]
+            if place in PLACES and item:
+                queue_action(s, "hide", note={"place": place, "line": item if who == HUMAN else f"{who}::{item}"},
+                             place=place, item=item, by=who, **{"for": "bolt"})
+
+    def finds_here(self, s, loc):
+        return super().finds_here(s, loc)                  # things left in his own town before it was shared
+
+    def creature_talk(self, s=None):
+        """The newest line from each creature: other creatures at his place in the shared town (not aimed at
+        someone else), plus any still arriving the old way."""
+        out = super().creature_talk()
+        if s is None:
+            return out
+        for h in self.wc.heard(s.setdefault("world", {})):
+            if h.get("to") in (None, "bolt") and h.get("text"):
+                out[h["name"]] = clip(h["text"], 300)
+                self.voices[h["name"]] = h["from"]
+        return out
+
+    def route_refusal(self, s, frm, to):
+        no = super().route_refusal(s, frm, to)
+        why = ((self.seen or {}).get("cant_go") or {}).get(to)
+        return no or (f"tried to fly to the {to.replace('_', ' ')}, but {why[:1].lower() + why[1:]}" if why else None)
+
+    def summary(self, s):
+        return str((self.seen or {}).get("summary") or "")[:700]
+
+    def after_turn(self, s, action, target, outcome):
+        if s["location"] != self.start_loc:
+            queue_action(s, "go", note={"back": self.start_loc}, to=s["location"])
+        if action == "sleep":
+            queue_action(s, "presence", awake=False)
+            s.setdefault("world", {})["awake"] = False
+        elif action in DOING:
+            queue_action(s, "doing", text=DOING[action])
+
+    def after_reply(self, s, heard, reply):
+        creatures = set(self.voices) | set(fellow_creatures().values())
+        for who in dict.fromkeys(w for w, _ in heard if w not in creatures):
+            queue_action(s, "human_spoke", by=who[:32])    # a human in the conversation ends any creature-only break
+        to = next((self.voices[w] for w, _ in reversed(heard) if w in self.voices), None)
+        if to and reply:
+            queue_action(s, "say", text=clip(reply, 300), to=to)
+
+    def send(self, body):
+        r = self.wc._call("POST", "/v1/act", body) if not self.wc.needs_hello else None
+        if r is None:
+            return None
+        status, reply = r
+        return reply if status == 200 else {"ok": False, "reason": reply.get("reason", "bad_request"),
+                                             "message": reply.get("message", "")}
+
+    def on_reply(self, s, entry, reply):
+        body, note = entry["body"], entry.get("note") or {}
+        if reply is not None and reply.get("ok"):
+            return
+        if body["action"] == "hide":                       # refused or given up: keep it in his own town instead
+            s["placed"].setdefault(note.get("place", body["place"]), []).append(note.get("line", body["item"]))
+        elif body["action"] == "go" and reply is not None and note.get("back") and s["location"] == body["to"]:
+            s["location"] = note["back"]                   # the shared town said no: he's back where he was
+            diary(f"**{now()}** {NAME} couldn't get to the {body['to'].replace('_', ' ')}: "
+                  f"{reply.get('message') or 'the way was blocked'}\n")
+
+    def deliveries(self, s):
+        return (self.seen or {}).get("deliveries") if self.seen is not None else None
+
+    def ack(self, ids):
+        self.wc.ack({"got": list(ids)})
+
+
+def make_town():
+    """His own town, unless world_config.json switches the shared town on. Never prints the token."""
+    try:
+        with open(WORLD_CONFIG, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except FileNotFoundError:
+        return LocalTown()
+    except ValueError as e:
+        print(f"{WORLD_CONFIG} is broken ({e}); living in his own town")
+        return LocalTown()
+    if not cfg.get("enabled") or not cfg.get("url") or len(str(cfg.get("token", ""))) < 24:
+        if cfg.get("enabled"):
+            print(f"{WORLD_CONFIG} needs a url and the token Elliott made for Bolt; living in his own town")
+        return LocalTown()
+    try:
+        town = WorldTown(str(cfg["url"]), str(cfg["token"]))
+    except ImportError:
+        print("world_client.py is missing; living in his own town")
+        return LocalTown()
+    print(f"The shared town is on ({cfg['url']}). When it's away, {NAME} lives in his own town.")
+    return town
+
+
+TOWN = LocalTown()       # main() switches to the shared town if world_config.json says so
 ATTEMPT = "0"              # changes every time a step runs, so a retried turn never reuses an action id
-RESEND = ("give", "drop", "take")   # no answer to these means "maybe it happened": resend with the same id
+RESEND = ("give", "drop", "take", "hide")   # no answer means "maybe it happened": resend with the same id
 OUTBOX_GIVE_UP = 30 * 86400         # the town remembers ids for 30 days; after that, resending could repeat it
 
 
-def queue_action(s, action, **fields):
-    """Queues something for the town, sent after this step saves. One id per attempt."""
+def queue_action(s, action, note=None, **fields):
+    """Queues something for the town, sent after this step saves. One id per attempt. `note` stays with Bolt
+    (it's never sent): what he needs to know when the answer comes back."""
     box = s.setdefault("outbox", [])
-    body = {"id": f"bolt:{s['tick']}:{ATTEMPT}:{len(box) + 1}", "action": action, **fields}
-    box.append({"t": time.time(), "body": body})
+    body = {"id": f"bolt:{s['tick']}:{ATTEMPT}:{len(box) + 1}", "action": action,
+            **{k: v for k, v in fields.items() if v is not None}}
+    box.append({"t": time.time(), "body": body, **({"note": note} if note else {})})
 
 
 def collect_deliveries(s):
@@ -2121,7 +2298,8 @@ def collect_deliveries(s):
         if how.startswith("you picked it up"):
             picked.append(item)                           # something he took: a find, not a gift
         elif " left it for you at " in how:
-            gifts.append(f"{item} (left by {who} at {how.split(' left it for you at ', 1)[1]})")
+            where = re.sub(rf"\b{NAME}'s ", "the ", how.split(" left it for you at ", 1)[1])   # "Bolt's nest" is just "the nest" to him
+            gifts.append(f"{item} (left by {who} at {where})")
         else:
             gifts.append(f"{item} (from {who})")
     ids = {str(d.get("id")) for d in shown}
@@ -2139,6 +2317,7 @@ def send_outbox(s, restarted=False):
     with the same id (the town ignores repeats). Anything else with no answer is just let go, and after a
     restart only those three are resent: an old line of talk or a move would arrive late and wrong.
     Deliveries he's saved are acked here too, after the save (repeating an ack is harmless)."""
+    TOWN.ready(s)
     if s.get("delivered"):
         try:
             TOWN.ack(list(s["delivered"]))
@@ -2169,9 +2348,9 @@ def execute(action, target, s, event):
         target = resolve_place(target)
         if target == loc:
             return f"thought about going somewhere but stayed at the {loc}"
-        if target in OTHER_PLACES and target not in PLACES:
+        if target in OTHER_PLACES and target not in PLACES and target not in TOWN.extra_places():
             return f"flew off toward the {target}, but couldn't find the way there today"
-        if target not in PLACES:
+        if target not in PLACES and target not in TOWN.extra_places():
             return (f"went looking for {target or 'somewhere new'} but couldn't find it anywhere. "
                     f"(Places that exist: {', '.join(PLACES)})")
         no = TOWN.route_refusal(s, loc, target)
@@ -2391,7 +2570,7 @@ def reply_now(s):
         who, _, msg = line.partition("|")
         heard.append((who.strip(), msg.strip()) if msg else (HUMAN, line))
     humans = bool(heard)
-    creatures = TOWN.creature_talk()
+    creatures = TOWN.creature_talk(s)
     heard += list(creatures.items())
     if not heard:
         return
@@ -2406,6 +2585,7 @@ def reply_now(s):
         diary(f"**{now()}** {NAME} wakes up to a visitor. Energy {s['energy']}.\n")
     AWAKE.set()
     loc = s["location"]
+    TOWN.look(s)
     coming = [l for l in peek_lines(OFFERINGS)]            # a gift being handed over right now
     reply = compose_reply(s, heard, creatures, loc, TOWN.event(loc), coming, [])
     said = "; ".join(f'{w} says "{m}"' for w, m in heard)
@@ -2462,6 +2642,7 @@ def tick(s):
             return
     AWAKE.set()
     s["tick"] += 1
+    TOWN.look(s)
     hour = datetime.now().hour
     tod = "night" if hour < 6 or hour >= 21 else "morning" if hour < 12 else "afternoon" if hour < 17 else "evening"
     wx = TOWN.sky()
@@ -2475,7 +2656,7 @@ def tick(s):
         who, _, msg = line.partition("|")
         heard.append((who.strip(), msg.strip()) if msg else (HUMAN, line))
     humans = bool(heard)
-    creatures = TOWN.creature_talk()                       # other creatures: newest line from each, at most
+    creatures = TOWN.creature_talk(s)                      # other creatures: newest line from each, at most
     heard += list(creatures.items())
     said = "; ".join(f'{w} says "{m}"' for w, m in heard)
     TOWN.take_hidden(s)                                     # items hidden around town (map page or !leave)
@@ -2567,7 +2748,7 @@ What you've done most lately: {", ".join(f"{a} x{n}" for a, n in sorted(((a, s['
 Recent memories:
 {recent}
 
-Places you can go: {", ".join(PLACES)}.
+Places you can go: {", ".join(list(PLACES) + TOWN.extra_places())}.
 Books in your library: {", ".join(book_title(b) for b in books()) or "none yet"}
 Things you can do HERE at the {loc}: {", ".join(a[3] for a in ACTIVITIES.values() if loc in a[0]) or "nothing special"}
 Where other activities are: {"; ".join(f"{k} at {'/'.join(v[0])}" for k, v in ACTIVITIES.items() if loc not in v[0])}
@@ -3065,6 +3246,9 @@ def main():
             print(f"(couldn't backfill people memory: {e})")
     if s["tick"] == 0:
         diary(f"# {NAME}'s diary\n\n**{now()}** {NAME} hatches into the world.\n")
+    global TOWN
+    TOWN = make_town()
+    TOWN.start(s)
     send_outbox(s, restarted=True)             # anything the town never answered before he stopped
     failures = 0
     while True:

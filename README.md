@@ -57,7 +57,16 @@ python tests/habits_test.py
 ```
 
 ## What's not in this repo
-Secrets (`discord_config.json`), and Bolt's actual life (`state.json`, `hoard.json`, `memory_book.jsonl`, `diary.md`, songs, drawings): those are personal and live only on his PC. Starting fresh hatches a brand new crow.
+## The shared town (shasta-world)
+
+Bolt can live in the town he shares with Spike ([GangSwan/shasta-world](https://github.com/GangSwan/shasta-world)) instead of his own copy. It's off until you switch it on:
+
+1. Copy `world_config.example.json` to `world_config.json` (git ignores it) and paste the token Elliott made for Bolt.
+2. Set `"enabled": true` and type `!restart`.
+
+With it on, the shared town tells him where everyone is, the weather and what's lying around; Spike's talk reaches him at normal speed; `!leave` items are kept for him in the shared town; and gifts from Spike land in his hoard. Everything else (his brain, memories, skills, hoard, songs, Discord diary) stays on this PC. Whenever the shared town is away, he lives in his own town and never waits on it. `tests/world_test.py path/to/shasta-world` runs his real code against the real server in test mode.
+
+Secrets (`discord_config.json`, `world_config.json`), and Bolt's actual life (`state.json`, `hoard.json`, `memory_book.jsonl`, `diary.md`, songs, drawings): those are personal and live only on his PC. Starting fresh hatches a brand new crow.
 
 ## Library
 Original field guides written for him: rocks & gems of Shasta, fishes, music theory for one voice, the crow book, animals of the high mountain, engines/cars/shops, drawing, tinkering, fire safety, metal fabrication, and the modular synthesizer. More can be fetched from Project Gutenberg with `!book`.

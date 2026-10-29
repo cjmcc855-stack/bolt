@@ -1,0 +1,6 @@
+{
+  "_readme": "The shared-town switch. Copy to world_config.json (git ignores it), paste the token Elliott made for Bolt, set enabled to true, and !restart. Set enabled back to false (or delete the file) to go back to his own town.",
+  "enabled": false,
+  "url": "http://underworld:8642",
+  "token": "PASTE the token Elliott made for Bolt (keep it secret)"
+}

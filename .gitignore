@@ -42,3 +42,6 @@ __pycache__/
 
 # song recipes for make_music (synth recipes are in patches/)
 tunes/
+
+# the shared-town switch (has Bolt's world token)
+world_config.json
