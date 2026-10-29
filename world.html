@@ -135,6 +135,8 @@
 
 <script>
 "use strict";
+// Double-clicked from the folder (file://)? This page only works when Bolt serves it, so go there.
+if (location.protocol === "file:") location.replace("http://localhost:8642/");
 // ======================= map =======================
 const T = 16, W = 48, H = 32;
 const cv = document.getElementById("c"), cx = cv.getContext("2d");
