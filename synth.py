@@ -477,7 +477,7 @@ def render(patch, path, level=10):
             y = y * (1.0 - r_mix * 0.5) + acc * r_mix
         out[i] = y
 
-    peak = max(1e-6, max(abs(v) for v in out))
+    peak = max(1e-6, *(abs(v) for v in out))
     LAST_STATS.clear()
     LAST_STATS.update(_listen(out, peak, p, n_steps * step))
     gain = (0.35 + 0.6 * out_vol) / peak

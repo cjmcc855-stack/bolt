@@ -32,6 +32,7 @@ book_requests.txt
 # --- things he makes ---
 songs/
 drawings/
+patches/
 
 # --- books fetched from Project Gutenberg at runtime (!book) ---
 library/Steep_Trails.txt

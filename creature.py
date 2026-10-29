@@ -9,6 +9,7 @@ World:  http://localhost:8642           his 16-bit town, chat, gifts, stash, son
 Talk:   type in his window, Discord, or the world page.  !give <thing>  !book <title>  !restart
 Test:   python tests/sim_days.py .      days of fake life with a chaotic brain; must say PROBLEMS: 0
         python tests/creature_loop_test.py   a badly behaved bot vs. his Discord loop protection
+        python tests/reply_test.py      quick replies (answers first, then his turn)
 Reset:  delete state.json, hoard.json and memory_book.jsonl to hatch a brand new crow
 
 MAP OF THIS FILE (search for the "# ----" headers)
@@ -23,18 +24,21 @@ MAP OF THIS FILE (search for the "# ----" headers)
   MEMORY BOOK ....... his whole life, forever, and reminiscing
   PEOPLE ............ what he knows about each person
   WEATHER/SEASONS ... real Mount Shasta weather, seasons, marmots
-  THE LOOP .......... execute(), sleep, tick(): one moment of his life
+  THE TOWN .......... LocalTown: the shared-town side of things (sky, events, hidden items, creature talk,
+                      travel rules); a shared world (shasta-world) can plug in here later
+  THE LOOP .......... execute(), sleep, quick replies, tick(): one moment of his life
   SAFETY ............ GPU watchdog, temp log, emergency shutdown, stop flag
-  WORLD PAGE ........ the little web server
-  STARTUP ........... single-instance lock, self-restart (tested first), main()
+  STARTUP ........... restart (tested first)
+  WORLD PAGE ........ the little web server, single-instance lock, main()
+  (his modular synthesizer is in synth.py, next to this file)
 
 SAFETY RULES THE CODE KEEPS
   - A tick is all-or-nothing: if anything fails halfway, nothing changes and it's retried later.
   - Saves are atomic with a .bak; the hoard and state are stamped with the same tick.
   - Gifts are never dropped, used up, or double counted.
-  - Messages wait in .pending files until the tick that handles them is saved.
-  - !restart runs tests/sim_days.py and tests/creature_loop_test.py on the new code first and refuses to
-    restart into broken code.
+  - Messages wait in .pending files until the tick (or quick reply) that handles them is saved.
+  - !restart runs all three tests on the new code first and refuses to restart into broken code.
+  - Restarts only ever happen when Caelan asks. The GPU watchdog shuts him down hard at GPU_KILL_TEMP.
   - Other creatures (bots listed in creatures.json) are heard under strict loop limits and can never run commands.
 """
 import json, os, random, re, socket, struct, subprocess, sys, threading, time, wave, urllib.parse, urllib.request
@@ -303,8 +307,9 @@ def save_state(s):
 DIARY_BUFFER = None     # during a tick, entries wait here until the tick succeeds
 
 
-def diary(text, file=None):
-    if DIARY_BUFFER is not None:
+def diary(text, file=None, now_=False):
+    """now_=True writes immediately even mid-turn (for the watchdog's last words before it exits)."""
+    if DIARY_BUFFER is not None and not now_:
         DIARY_BUFFER.append((text, file))
         return
     with open(DIARY, "a", encoding="utf-8") as f:
@@ -2433,7 +2438,7 @@ def emergency_shutdown(t):
     unload_model()
     try:
         diary(f"**{now()}** 🔥 GPU hit {t}C. {NAME} tucks his head under his wing and goes dormant. "
-              f"He stays off until Caelan says /start.\n")
+              f"He stays off until {HUMAN} says !start.\n", now_=True)
     except Exception:
         pass
     print("EMERGENCY SHUTDOWN. Model unloaded. Bolt will not restart until the lock is cleared.")
@@ -2491,7 +2496,7 @@ def temp_watchdog():
             os.remove(STOP_FLAG)
             unload_model()
             try:
-                diary(f"**{now()}** {NAME} was told to stop for now. Goes to sleep.\n")
+                diary(f"**{now()}** {NAME} was told to stop for now. Goes to sleep.\n", now_=True)
             except Exception:
                 pass
             if os.path.exists(ALIVE_FILE):
@@ -2574,7 +2579,7 @@ def new_code_ok():
     print(f"[{now()}] testing the new code before restarting...")
     tail = ""
     try:
-        for t, extra in tests:              # the life sim, then the bot-loop protection
+        for t, extra in tests:              # the life sim, the bot-loop protection, quick replies
             r = subprocess.run([sys.executable, os.path.join(os.path.dirname(SCRIPT), "tests", t), os.path.dirname(SCRIPT)] + extra,
                                capture_output=True, text=True, timeout=180, encoding="utf-8", errors="replace",
                                env={**os.environ, "PYTHONIOENCODING": "utf-8"})
