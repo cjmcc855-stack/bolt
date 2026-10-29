@@ -217,6 +217,26 @@ SHOWN["list"] = []
 s = c.run_tick(s)
 check("delivered" not in s, "nothing shown: nothing remembered")
 
+print("8. Caelan can call him to Spike's fir")
+
+
+class SharedTown(c.LocalTown):
+    name = "a shared town with a fir"
+
+    def extra_places(self):
+        return ["fir"]
+
+
+c.TOWN = c.LocalTown()
+s["location"], s["energy"] = "lake", 80
+c.inbox(c.CALLS, "Caelan|fir")
+s = c.run_tick(s)
+check(s["location"] == "lake", "his own town has no fir: he tries and stays put")
+c.TOWN = SharedTown()
+c.inbox(c.CALLS, "Caelan|fir")
+s = c.run_tick(s)
+check(s["location"] == "fir", "with the shared town on, he flies to the fir")
+
 os.chdir("/")
 shutil.rmtree(WORK, ignore_errors=True)
 print(f"\nPROBLEMS: {len(PROBLEMS)}")

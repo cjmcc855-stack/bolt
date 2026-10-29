@@ -124,6 +124,12 @@ def place_desc(loc):
     return PLACES.get(loc) or OTHER_PLACES.get(loc) or "Somewhere you don't know well yet."
 
 
+def callable_place(place):
+    """Where his human can call him: his own town, plus the shared town's places (if it's away, he tries and can't
+    find the way, like any other go)."""
+    return place in PLACES or place in OTHER_PLACES
+
+
 FINDS = {
     "junkyard": ["chrome emblem", "spark plug", "bent key", "valve cap", "side mirror shard", "brass washer", "watch face"],
     "rail_yard": ["railroad spike", "flattened penny", "signal lens shard", "rusty coupling pin", "brass whistle"],
@@ -856,11 +862,11 @@ def discord_listener():
                 if who != HUMAN:                          # !call moves your own creature only (DECISIONS.md)
                     continue
                 place = resolve_place(text.split(" ", 1)[1])
-                if place in PLACES:
+                if callable_place(place):
                     inbox(CALLS, f"{who}|{place}")
                     discord_post(f"*👋 {who} is waving {NAME} over to the {place.replace('_', ' ')}.*")
                 else:
-                    discord_post(f"*Try: !call summit   (places: {', '.join(PLACES)})*")
+                    discord_post(f"*Try: !call summit   (places: {', '.join(list(PLACES) + list(OTHER_PLACES))})*")
                 continue
             if text.lower() in ("/help", "/commands"):
                 discord_post("*Talk to him by just typing. Commands: !give <thing> · !leave <place> <thing> · "
@@ -1915,7 +1921,7 @@ PLACE_ALIASES = {"river": "creek", "canyon": "creek", "stream": "creek", "diner"
 
 def resolve_place(target):
     t = re.sub(r"[^a-z_ ]", "", str(target).lower()).replace("the ", " ").strip().replace(" ", "_")
-    if t in PLACES:
+    if t in PLACES or t in OTHER_PLACES:
         return t
     hit = next((p for p in PLACES if p in t or (t and t in p)), None)
     if hit:
@@ -2665,7 +2671,7 @@ def tick(s):
     calls = []
     for line in take_lines(CALLS):
         who, _, place = line.partition("|")
-        if place in PLACES:
+        if callable_place(place):
             calls.append((who or HUMAN, place))
     if humans or gifts or calls:
         s["human_at"] = time.time()
@@ -3158,7 +3164,7 @@ class WorldHandler(BaseHTTPRequestHandler):
             line, fname = f"{item} (from {HUMAN})", OFFERINGS
         elif path == "/api/place" and item and place in PLACES:
             line, fname = f"{place}|{item}", PLACEMENTS
-        elif path == "/api/call" and place in PLACES:
+        elif path == "/api/call" and callable_place(place):
             line, fname = f"{HUMAN}|{place}", CALLS
         else:
             return self._send(400, '{"ok":false}')
