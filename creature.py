@@ -10,6 +10,7 @@ Talk:   type in his window, Discord, or the world page.  !give <thing>  !book <t
 Test:   python tests/sim_days.py .      days of fake life with a chaotic brain; must say PROBLEMS: 0
         python tests/creature_loop_test.py   a badly behaved bot vs. his Discord loop protection
         python tests/reply_test.py      quick replies (answers first, then his turn)
+        python tests/town_test.py       shared-town plumbing (save first, then send; unknown places)
 Reset:  delete state.json, hoard.json and memory_book.jsonl to hatch a brand new crow
 
 MAP OF THIS FILE (search for the "# ----" headers)
@@ -25,7 +26,8 @@ MAP OF THIS FILE (search for the "# ----" headers)
   PEOPLE ............ what he knows about each person
   WEATHER/SEASONS ... real Mount Shasta weather, seasons, marmots
   THE TOWN .......... LocalTown: the shared-town side of things (sky, events, hidden items, creature talk,
-                      travel rules); a shared world (shasta-world) can plug in here later
+                      travel rules); a shared world (shasta-world) can plug in here later.
+                      The outbox: a step saves what it wants to tell the town, then send_outbox() sends it
   THE LOOP .......... execute(), sleep, quick replies, tick(): one moment of his life
   SAFETY ............ GPU watchdog, temp log, emergency shutdown, stop flag
   STARTUP ........... restart (tested first)
@@ -37,7 +39,8 @@ SAFETY RULES THE CODE KEEPS
   - Saves are atomic with a .bak; the hoard and state are stamped with the same tick.
   - Gifts are never dropped, used up, or double counted.
   - Messages wait in .pending files until the tick (or quick reply) that handles them is saved.
-  - !restart runs all three tests on the new code first and refuses to restart into broken code.
+  - Anything for the town is saved before it's sent; gives, drops and takes are resent with the same id.
+  - !restart runs all four tests on the new code first and refuses to restart into broken code.
   - Restarts only ever happen when Caelan asks. The GPU watchdog shuts him down hard at GPU_KILL_TEMP.
   - Other creatures (bots listed in creatures.json) are heard under strict loop limits and can never run commands.
 """
@@ -106,6 +109,20 @@ EVENTS = {
     "machine_shop": ["brass curls glitter on the floor", "old blueprints flutter on the wall", "a lathe sits silent, waiting for someone"],
     "summit": ["the wind nearly knocks you over", "clouds roll by below you", "the sun hits the ice and everything glitters"],
 }
+OTHER_PLACES = {   # places in the shared town (shasta-world) that aren't in his own town
+    "fir": "Spike's home: a tall old fir tree, dark and sticky with sap. Spike is a Steller's jay.",
+}
+OTHER_EVENTS = {
+    "fir": ["wind hisses through the fir needles", "sap beads on the bark", "a cone drops and bounces down the branches"],
+}
+
+
+def place_desc(loc):
+    """What a place is like. Works for shared-town places too, and anywhere unknown, so a turn never breaks
+    because the shared town left him somewhere his own town doesn't have."""
+    return PLACES.get(loc) or OTHER_PLACES.get(loc) or "Somewhere you don't know well yet."
+
+
 FINDS = {
     "junkyard": ["chrome emblem", "spark plug", "bent key", "valve cap", "side mirror shard", "brass washer", "watch face"],
     "rail_yard": ["railroad spike", "flattened penny", "signal lens shard", "rusty coupling pin", "brass whistle"],
@@ -325,9 +342,10 @@ def run_tick(s):
 
 def run_step(step, s):
     """Runs one step of his life (a turn, or a quick reply) all-or-nothing."""
-    global DIARY_BUFFER, HOARD
+    global DIARY_BUFFER, HOARD, ATTEMPT
     trial = copy.deepcopy(s)
     DIARY_BUFFER = []
+    ATTEMPT = format(time.time_ns() // 1000, "x")
     try:
         step(trial)
     except Exception:
@@ -1809,7 +1827,7 @@ SEASON_EVENTS = {
 
 
 def pick_event(loc):
-    pool = list(EVENTS[loc]) + SEASON_EVENTS.get(season(), {}).get(loc, [])
+    pool = list(EVENTS.get(loc) or OTHER_EVENTS.get(loc) or ["it's quiet"]) + SEASON_EVENTS.get(season(), {}).get(loc, [])
     if not marmots_awake():
         pool = [e for e in pool if "marmot" not in e]
         if loc in ("mountain_trail", "summit"):
@@ -1960,11 +1978,58 @@ class LocalTown:
         """A few lines about the shared town for his prompt. His own town has nothing extra to say."""
         return ""
 
+    # Telling the town what he did. Save first, then send (shasta-world PROTOCOL.md, "When to send"):
+    # during a turn these only queue actions in s["outbox"] (queue_action), the turn saves, and send_outbox()
+    # sends them afterwards. His own town already knows everything, so it queues nothing.
     def after_turn(self, s, action, target, outcome):
-        """Tells the town what he did. His own town already knows."""
+        """What he did this turn."""
+
+    def after_reply(self, s, heard, reply):
+        """What he just said to someone."""
+
+    def send(self, body):
+        """Sends one queued action. Returns the town's answer, or None if there was no answer."""
+        return {"ok": True, "id": body["id"]}
+
+    def on_reply(self, s, entry, reply):
+        """Applies the town's answer to a queued action (reply None = gave up on it)."""
 
 
 TOWN = LocalTown()
+ATTEMPT = "0"              # changes every time a step runs, so a retried turn never reuses an action id
+RESEND = ("give", "drop", "take")   # no answer to these means "maybe it happened": resend with the same id
+OUTBOX_GIVE_UP = 30 * 86400         # the town remembers ids for 30 days; after that, resending could repeat it
+
+
+def queue_action(s, action, **fields):
+    """Queues something for the town, sent after this step saves. One id per attempt."""
+    box = s.setdefault("outbox", [])
+    body = {"id": f"bolt:{s['tick']}:{ATTEMPT}:{len(box) + 1}", "action": action, **fields}
+    box.append({"t": time.time(), "body": body})
+
+
+def send_outbox(s, restarted=False):
+    """Sends what his last step queued (already saved), and saves after each answer, so a crash at any point
+    can't lose an action or do one twice. A give, drop or take with no answer stays queued and is resent later
+    with the same id (the town ignores repeats). Anything else with no answer is just let go, and after a
+    restart only those three are resent: an old line of talk or a move would arrive late and wrong."""
+    for entry in list(s.get("outbox") or []):
+        kind = entry["body"]["action"]
+        try:
+            if (restarted and kind not in RESEND) or time.time() - entry["t"] > OUTBOX_GIVE_UP:
+                TOWN.on_reply(s, entry, None)
+            else:
+                reply = TOWN.send(entry["body"])
+                if reply is None and kind in RESEND:
+                    continue
+                TOWN.on_reply(s, entry, reply)
+            s["outbox"].remove(entry)
+            save_state(s)
+        except Exception as e:                       # leave it queued; the next step tries again
+            print(f"[{now()}] couldn't send {kind} to {TOWN.name} ({e})")
+    if "outbox" in s and not s["outbox"]:
+        del s["outbox"]
+        save_state(s)
 
 
 def execute(action, target, s, event):
@@ -1973,6 +2038,8 @@ def execute(action, target, s, event):
         target = resolve_place(target)
         if target == loc:
             return f"thought about going somewhere but stayed at the {loc}"
+        if target in OTHER_PLACES and target not in PLACES:
+            return f"flew off toward the {target}, but couldn't find the way there today"
         if target not in PLACES:
             return (f"went looking for {target or 'somewhere new'} but couldn't find it anywhere. "
                     f"(Places that exist: {', '.join(PLACES)})")
@@ -2095,7 +2162,7 @@ def compose_reply(s, heard, creatures, loc, event, gifts, ate):
     ask = random.random() < 0.35
     crutch = overused_words(s)
     reply = call_llm(
-        f"Right now you are AT the {loc} ({PLACES[loc]}). {event}. Mood {s['mood']}/5, energy {s['energy']}/100.\n"
+        f"Right now you are AT the {loc} ({place_desc(loc)}). {event}. Mood {s['mood']}/5, energy {s['energy']}/100.\n"
         f"Who you are: {s['likes']}\n"
         f"How you talk: {s.get('voice') or 'short, blunt, bird-brained'}\n"
         f"Words you've picked up and like: {', '.join(s['words'][-10:]) or 'none yet'}\n"
@@ -2179,6 +2246,7 @@ def reply_now(s):
     s["memories"] = (s["memories"] + [{"tick": s["tick"], "when": now(), "feeling": 1,
                                        "text": f'{said} and I said "{reply}".'}])[-60:]
     s["last"] = dict(s.get("last") or {}, when=now(), reply=reply, heard=[f"{w}: {m}" for w, m in heard])
+    TOWN.after_reply(s, heard, reply)
     lines = "\n".join(f"**{w}:** {m}" for w, m in heard)
     diary(f"**{now()}**\n{lines}\n**{NAME}:** {reply or '(just stares at you)'}\n")
     save_state(s)
@@ -2254,6 +2322,7 @@ def tick(s):
     reply = ""
     if heard:
         reply = compose_reply(s, heard, creatures, loc, event, gifts, ate)
+        TOWN.after_reply(s, heard, reply)
         learn_about_people(s, heard)
         s["convo"] = (s.get("convo", []) + [{"who": w, "said": m, "reply": ""} for w, m in heard[:-1]]
                       + [{"who": heard[-1][0], "said": heard[-1][1], "reply": reply}])[-12:]
@@ -2264,7 +2333,7 @@ def tick(s):
         said, reply = just["said"], just["reply"]          # he answered a moment ago: the turn knows what was said
     s["weather"] = weather
     sky = f"{weather}, {wx['temp_f']}°F, wind {wx['wind_mph']} mph (the real weather on the mountain right now)" if wx else weather
-    prompt = f"""It's {datetime.now().strftime('%B')} ({season()}), {tod}. Weather: {sky}. You're at the {loc}: {PLACES[loc]}
+    prompt = f"""It's {datetime.now().strftime('%B')} ({season()}), {tod}. Weather: {sky}. You're at the {loc}: {place_desc(loc)}
 Right now: {event}.
 {town_note}
 {"You just got gifts: " + "; ".join(gifts) + "." if gifts else ""}
@@ -2572,7 +2641,8 @@ def new_code_ok():
         print(f"[{now()}] {msg}")
         discord_post(f"*🛠️ {msg}*")
         return False
-    tests = [(t, extra) for t, extra in (("sim_days.py", ["--ticks", "150"]), ("creature_loop_test.py", []), ("reply_test.py", []))
+    tests = [(t, extra) for t, extra in (("sim_days.py", ["--ticks", "150"]), ("creature_loop_test.py", []), ("reply_test.py", []),
+                                             ("town_test.py", []))
              if os.path.exists(os.path.join(os.path.dirname(SCRIPT), "tests", t))]
     if not tests:
         return True
@@ -2779,6 +2849,7 @@ def main():
             print(f"(couldn't backfill people memory: {e})")
     if s["tick"] == 0:
         diary(f"# {NAME}'s diary\n\n**{now()}** {NAME} hatches into the world.\n")
+    send_outbox(s, restarted=True)             # anything the town never answered before he stopped
     failures = 0
     while True:
         try:
@@ -2786,9 +2857,11 @@ def main():
                 if has_talk():                 # someone talked: answer first, then live the turn
                     try:
                         s = run_step(reply_now, s)
+                        send_outbox(s)         # saved first, now tell the town
                     except Exception as e:     # the turn below can still answer them
                         print(f"[{now()}] quick reply failed ({e}); answering in the turn instead")
                 s = run_tick(s)                # a tick that crashes halfway changes nothing
+                send_outbox(s)
                 failures = 0
                 check_temp()                   # check again right after the heavy part
         except Exception as e:

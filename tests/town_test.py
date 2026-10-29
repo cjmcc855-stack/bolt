@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""
+town_test.py - checks the plumbing Bolt needs for the shared town (shasta-world), using a fake town:
+
+  - he can wake up somewhere his own town doesn't have (Spike's fir) and still live a normal turn
+  - save first, then send: what a step queues for the town is on disk before it's sent
+  - a give/drop/take with no answer is resent with the same id; other actions are let go
+  - after a restart only give/drop/take are resent; a failed turn sends nothing
+  - a retried turn uses new ids
+
+    python tests/town_test.py [path/to/bolt_folder]
+
+Runs on a fake brain in a temp folder. Nothing touches the real Bolt. Ends with PROBLEMS: 0.
+"""
+import importlib.util, json, os, shutil, sys, tempfile, time
+
+SRC = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), ".."))
+SRC_DIR = SRC if os.path.isdir(SRC) else os.path.dirname(SRC)
+WORK = tempfile.mkdtemp(prefix="bolt_town_")
+for f in os.listdir(SRC_DIR):
+    if f.endswith(".py"):
+        shutil.copy(os.path.join(SRC_DIR, f), os.path.join(WORK, f))
+os.chdir(WORK)
+spec = importlib.util.spec_from_file_location("creature", "creature.py")
+c = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(c)
+c.DISCORD = {}
+c.real_weather = lambda: {"kind": "clear", "temp_f": 50, "wind_mph": 3, "real": False}
+c.discord_post = lambda text, file=None: None
+PROBLEMS, PROMPTS = [], []
+PLAN = {"action": "think", "target": "", "broken": False}
+
+
+def check(ok, what):
+    print(("  ok   " if ok else "  FAIL ") + what)
+    if not ok:
+        PROBLEMS.append(what)
+
+
+def brain(prompt, json_mode=True, temp=0.9, **kw):
+    PROMPTS.append(prompt)
+    if "just said this to you" in prompt or "Just said to you" in prompt:
+        return "Kraa."
+    if '"action"' in prompt:
+        if PLAN["broken"]:
+            raise ConnectionError("brain hiccup (test)")
+        return json.dumps({"thought": "hm", "action": PLAN["action"], "target": PLAN["target"]})
+    if "How did it honestly make you feel" in prompt:
+        return json.dumps({"feeling": 0, "reflection": "fine"})
+    return "{}"
+
+
+c.call_llm = brain
+
+
+class FakeTown(c.LocalTown):
+    """Queues a 'doing' after every turn, a 'say' after every reply, and a 'give' when he thinks."""
+    name = "the fake town"
+
+    def __init__(self):
+        self.sent, self.answer, self.applied, self.on_disk = [], {}, [], []
+
+    def after_turn(self, s, action, target, outcome):
+        c.queue_action(s, "doing", text=action)
+        if action == "think":
+            c.queue_action(s, "give", to="spike", item="bottle cap")
+
+    def after_reply(self, s, heard, reply):
+        c.queue_action(s, "say", text=reply)
+
+    def send(self, body):
+        with open(c.STATE_FILE, encoding="utf-8") as f:
+            saved = [e["body"]["id"] for e in json.load(f).get("outbox", [])]
+        self.on_disk.append(body["id"] in saved)
+        self.sent.append(body)
+        return self.answer.get(body["action"], {"ok": True, "id": body["id"]})
+
+    def on_reply(self, s, entry, reply):
+        self.applied.append((entry["body"]["action"], reply))
+
+
+def saved_outbox():
+    with open(c.STATE_FILE, encoding="utf-8") as f:
+        return json.load(f).get("outbox", [])
+
+
+s = c.load_state()
+s["tick"] = 50
+c.save_state(s)
+
+print("1. waking up at Spike's fir, which his own town doesn't have")
+s["location"] = "fir"
+PLAN.update(action="go", target="junkyard")
+s = c.run_tick(s)
+decision = next((p for p in PROMPTS if '"action"' in p), "")
+check("Spike's home" in decision, "his turn knows what the fir is")
+check(s["location"] == "junkyard", "and he can fly home from it")
+s["location"] = "fir"
+PLAN.update(action="go", target="fir")
+check(c.execute("go", "fir", s, "x").startswith("thought about going"), "going to the fir while at the fir is staying put")
+s["location"] = "nest"
+out = c.execute("go", "fir", s, "x")
+check(s["location"] == "nest" and "couldn't find the way" in out, "his own town can't take him to the fir")
+check(c.place_desc("nowhere_at_all") and c.pick_event("nowhere_at_all"), "an unknown place still has a description and events")
+
+print("2. his own town queues nothing")
+PLAN.update(action="think", target="")
+s = c.run_tick(s)
+check("outbox" not in s and not saved_outbox(), "no outbox at all")
+
+print("3. save first, then send")
+TOWN = c.TOWN = FakeTown()
+s = c.run_tick(s)
+check(len(saved_outbox()) == 2 and not TOWN.sent, "the turn saved its actions without sending them")
+ids = [e["body"]["id"] for e in saved_outbox()]
+c.send_outbox(s)
+check(TOWN.on_disk == [True, True], "each action was already on disk when it was sent")
+check([b["id"] for b in TOWN.sent] == ids, "sent with the ids that were saved")
+check("outbox" not in s and not saved_outbox(), "answered actions leave the outbox (saved)")
+
+print("4. no answer: the give waits, the rest is let go")
+TOWN.sent.clear()
+TOWN.answer = {"give": None, "doing": None}
+s = c.run_tick(s)
+give_id = next(e["body"]["id"] for e in saved_outbox() if e["body"]["action"] == "give")
+c.send_outbox(s)
+check([e["body"]["action"] for e in saved_outbox()] == ["give"], "only the give is still queued")
+TOWN.answer = {}
+TOWN.sent.clear()
+c.send_outbox(s)
+check([b["id"] for b in TOWN.sent] == [give_id], "and it's resent with the same id")
+check(not saved_outbox(), "until it gets an answer")
+
+print("5. a retried turn gets new ids, and a failed one sends nothing")
+TOWN.sent.clear()
+before = json.dumps(saved_outbox())
+PLAN["broken"] = True
+try:
+    c.run_tick(s)
+    check(False, "the failing turn raised")
+except ConnectionError:
+    pass
+PLAN["broken"] = False
+check(json.dumps(saved_outbox()) == before and not TOWN.sent, "the failed turn queued and sent nothing")
+TOWN.answer = {"give": None, "doing": None}
+s1 = c.run_tick(s)
+first = [e["body"]["id"] for e in s1["outbox"]]
+c.save_state(s)                                  # pretend that turn crashed before it was kept
+time.sleep(0.01)
+s2 = c.run_tick(s)
+second = [e["body"]["id"] for e in s2["outbox"]]
+check(first and second and not set(first) & set(second), "the same tick retried uses different ids")
+s = s2
+
+print("6. after a restart only the give is resent; old ones are given up")
+c.inbox(c.TALK, "Caelan|hey")
+s = c.run_step(c.reply_now, s)
+check(sorted(e["body"]["action"] for e in saved_outbox()) == ["doing", "give", "say"], "a say, a doing and a give were waiting")
+c.HOARD = None
+s = c.load_state()                               # restart: read back what was saved
+TOWN.sent.clear()
+TOWN.applied.clear()
+TOWN.answer = {}
+c.send_outbox(s, restarted=True)
+check([b["action"] for b in TOWN.sent] == ["give"], "only the give was resent")
+check(sorted(a for a, r in TOWN.applied if r is None) == ["doing", "say"], "the say and the doing were let go")
+check(not saved_outbox(), "nothing left waiting")
+c.queue_action(s, "give", to="spike", item="old spoon")
+s["outbox"][0]["t"] -= 31 * 86400
+TOWN.sent.clear()
+TOWN.applied.clear()
+c.send_outbox(s)
+check(not TOWN.sent and TOWN.applied == [("give", None)], "a give unanswered for 30 days is given up, not resent")
+
+os.chdir("/")
+shutil.rmtree(WORK, ignore_errors=True)
+print(f"\nPROBLEMS: {len(PROBLEMS)}")
+sys.exit(1 if PROBLEMS else 0)
