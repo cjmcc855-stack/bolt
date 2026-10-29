@@ -1184,8 +1184,8 @@ def revise_beliefs(s, source, text):
     about it was wrong, he updates it. The old belief isn't erased; it's kept as something he used to think."""
     low, notes = text.lower(), []
     for key, lore in list(s["item_lore"].items()):
-        words = set(re.findall(r"[a-z]{4,}", key)) - COMMON_WORDS
-        if not lore.get("facts") or not words or not any(re.search(rf"\b{w}s?\b", low) for w in words):
+        head = (re.findall(r"[a-z]{3,}", key) or [""])[-1]       # the thing itself: 'wheel spacer' -> 'spacer'
+        if not lore.get("facts") or not head or not re.search(rf"\b{re.escape(head)}(s|es)?\b", low):
             continue
         facts = lore["facts"]
         r = parse_json(call_llm(
@@ -1611,16 +1611,26 @@ def item_key(item):
     return bare(item).lower()
 
 
+def about_other_item(s, fact, key):
+    """'lighter: the wheel sparks the flint' is about the lighter, even if it says 'wheel'."""
+    name, sep, _ = fact.partition(": ")
+    name = name.strip().lower()
+    return bool(sep) and name != key and name in s["item_lore"]
+
+
 def item_knows(s, item):
-    """Everything he's figured out about one of his things: from examining it, plus anything he read that mentions it."""
+    """Everything he's figured out about one of his things: from examining it, plus anything he read that's
+    actually about it (it has to name the thing itself, not just share a word with it)."""
     key = item_key(item)
     lore = list(s["item_lore"].get(key, {}).get("facts", []))
-    words = {w for w in re.findall(r"[a-z]{4,}", key)} - {"from", "made", "with", "left"}
-    if words:
+    head = (re.findall(r"[a-z]{3,}", key) or [""])[-1]          # 'dark grey wheel spacer' -> 'spacer'
+    if head:
         for nb in s["notebooks"].values():
             for f in nb:
                 fact = f.split(": ", 1)[1] if f.lower().startswith(key + ": ") else f
-                if words & set(re.findall(r"[a-z]{4,}", f.lower())) and fact.lower() not in {x.lower() for x in lore}:
+                mine = f.lower().startswith(key + ": ") or (
+                    not about_other_item(s, f, key) and re.search(rf"\b{re.escape(head)}(s|es)?\b", f.lower()))
+                if mine and fact.lower() not in {x.lower() for x in lore}:
                     lore.append(fact)
     return lore
 
@@ -1650,7 +1660,8 @@ def do_examine(target, s):
     r = parse_json(call_llm(
         f"You're examining your {bare(item)} very closely: turning it over, pecking at it, looking at every part.\n"
         f"What you ALREADY know about it: {'; '.join(known) or 'nothing yet'}\n"
-        f"Other things you know that might help: {'; '.join(f for f in relevant_notes(s, text=base_name(item), n=5) if f not in known) or 'nothing'}\n\n"
+        f"Other things you know that might help: {'; '.join(f for f in relevant_notes(s, text=base_name(item), n=8) if f not in known and not about_other_item(s, f, key))[:600] or 'nothing'}\n"
+        "(Facts about your OTHER things are about those things, not this one.)\n\n"
         "Figure out something NEW about it that you didn't already know, from what you can actually see, hear, feel, "
         "or test by pecking at it: its parts you can see, what it's made of, what happens when you push or turn things. "
         "Don't name hidden insides you can't see or things you'd only know from a book (books are how you learn "

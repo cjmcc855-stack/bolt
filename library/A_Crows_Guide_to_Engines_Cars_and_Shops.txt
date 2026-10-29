@@ -36,6 +36,12 @@ TIRES: rubber gripping the road is the only thing keeping a car pointed where it
 
 BRAKES: when the driver presses the brake pedal, pads squeeze against metal discs on the wheels and slow them down by friction, which turns all that speed into heat. Brakes can get hot enough to glow.
 
+THE HUB: the round metal piece at the end of each axle that the wheel bolts onto. It spins with the wheel.
+
+WHEEL STUDS: threaded steel posts sticking out of the hub. The wheel slides over them, and the lug nuts screw onto them.
+
+WHEEL SPACERS: flat, round metal discs, usually aluminum, that sit between the hub and the wheel. Their whole job is to push the wheel farther out from the car. People use them to make a car's stance wider, so the wheels sit right out at the edge of the fenders (drift cars and show cars love that look), to give the wheel more room to clear the brakes or suspension, and to widen the track, which changes how the car handles in a slide. There are two kinds. A slip-on spacer is a thin disc with holes that slides over the studs that are already there, and only thin ones work that way, because the studs still have to reach through far enough to hold the lug nuts. A bolt-on spacer is thicker: it bolts to the hub with its own nuts and has its own studs sticking out for the wheel to mount on. A hub-centric spacer has a raised lip in the middle that fits the hub exactly, so the wheel stays perfectly centered. A spacer has nothing to do with fire, sparks, or fuel; it's all about where the wheel sits. Like lug nuts, spacers have to be tightened properly and checked again after driving, because a loose spacer is as dangerous as a loose wheel. A dark grey or colored spacer is usually anodized aluminum: aluminum with a hard, colored skin grown onto it.
+
 ----------------------------------------------------------------------
 
 PART THREE: DRIFTING
