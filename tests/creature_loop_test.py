@@ -213,6 +213,12 @@ run(w)
 gifts = open(c.OFFERINGS).read().splitlines() if os.path.exists(c.OFFERINGS) else []
 check(gifts == ["a shiny rock (from Caelan)"], f"'!give spike' skipped, '!give bolt' kept: {gifts}")
 check(not c.RESTART.is_set(), "'!restart spike' doesn't restart Bolt")
+script = [(base + 10, ("ellwood2150", "8", "!call lake")), (base + 20, ("ellwood2150", "8", "!call bolt summit")),
+          (base + 30, ("actuallyputin", "9", "!call creek"))]
+w = World(1, script=script)
+run(w)
+calls = open(c.CALLS).read().splitlines() if os.path.exists(c.CALLS) else []
+check(calls == ["Caelan|creek"], f"only Caelan's !call moves Bolt; Elliott's calls are for his own bird: {calls}")
 script = [(base + 10, ("actuallyputin", "9", "Hi Spike!")), (base + 20, ("actuallyputin", "9", "hey spike, what about bolt?")),
           (base + 30, ("actuallyputin", "9", "hey everyone"))]
 script.insert(0, (base + 5, ("actuallyputin", "9", f"<@{ME}> introduce yourself to Spike!", False, [ME])))

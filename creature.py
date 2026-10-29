@@ -853,6 +853,8 @@ def discord_listener():
                     discord_post(f"*Try: !leave lake a spinner lure   (places: {', '.join(PLACES)})*")
                 continue
             if text.lower().startswith("/call "):
+                if who != HUMAN:                          # !call moves your own creature only (DECISIONS.md)
+                    continue
                 place = resolve_place(text.split(" ", 1)[1])
                 if place in PLACES:
                     inbox(CALLS, f"{who}|{place}")
