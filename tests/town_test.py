@@ -237,6 +237,65 @@ c.inbox(c.CALLS, "Caelan|fir")
 s = c.run_tick(s)
 check(s["location"] == "fir", "with the shared town on, he flies to the fir")
 
+print("9. he notices who's with him, and his replies know it")
+WITH = {"here": []}
+
+
+class CompanyTown(c.LocalTown):
+    name = "a town with Spike in it"
+
+    def here(self, loc):
+        return [dict(h) for h in WITH["here"]]
+
+
+def seen_lines():
+    with open(c.DIARY, encoding="utf-8") as f:
+        return [l for l in f.read().splitlines() if "👀" in l]
+
+
+c.TOWN = CompanyTown()
+PLAN.update(action="think", target="")
+s["location"], s["energy"] = "fir", 80
+WITH["here"] = [{"name": "Spike", "state": "asleep", "doing": None}]
+s = c.run_tick(s)
+check(seen_lines()[-1:] and "Spike is here at the fir, asleep" in seen_lines()[-1], "Spike asleep at the fir goes in his diary")
+check(any("I saw: Spike is here at the fir, asleep" in m["text"] for m in s["memories"][-3:]), "and in his memories")
+n = len(seen_lines())
+s = c.run_tick(s)
+check(len(seen_lines()) == n, "the same company next turn isn't noted again")
+WITH["here"] = [{"name": "Spike", "state": "awake", "doing": "painting"}]
+s = c.run_tick(s)
+check(len(seen_lines()) == n + 1 and "Spike is awake now" in seen_lines()[-1], "he notices Spike waking up")
+PROMPTS.clear()
+reply = c.compose_reply(s, [("Spike", "Bolt")], {"Spike": "Bolt"}, "fir", "wind in the needles", [], [])
+check("with you right now: Spike (awake, painting)" in PROMPTS[0], "a reply knows who's there with him and what they're doing")
+WITH["here"] = []
+s = c.run_tick(s)
+check("Spike left the fir" in seen_lines()[-1], "he notices Spike leaving")
+WITH["here"] = [{"name": "Spike", "state": "quiet", "doing": None}]
+s["location"] = "junkyard"
+s = c.run_tick(s)
+check("Spike is here at the junkyard, sitting quiet" in seen_lines()[-1] and "left" not in seen_lines()[-1],
+      "somewhere new, he just sees who's there")
+c.TOWN = c.LocalTown()
+n = len(seen_lines())
+s = c.run_tick(s)
+PROMPTS.clear()
+c.compose_reply(s, [("Caelan", "hey")], {}, "junkyard", "a dog barks", [], [])
+check(len(seen_lines()) == n and "with you right now" not in PROMPTS[0], "his own town: nothing to notice, nothing added")
+
+print("10. he's told plainly when a creature parrots him")
+s["convo"] = [{"who": "Spike", "said": "Patterns tell stories, yeah.",
+               "reply": "The glints and movements always tell their own tales, each one a piece of the puzzle."}]
+PROMPTS.clear()
+c.compose_reply(s, [("Spike", "Yeah. The glints and movements tell their own tales, each one a piece of the puzzle.")],
+                {"Spike": "Yeah. The glints and movements tell their own tales, each one a piece of the puzzle."}, "junkyard", "", [], [])
+check("Spike just said back almost exactly what you'd said" in PROMPTS[0], "an echo is pointed out")
+PROMPTS.clear()
+c.compose_reply(s, [("Spike", "Found a beetle under the fir log, ate it cold.")],
+                {"Spike": "Found a beetle under the fir log, ate it cold."}, "junkyard", "", [], [])
+check("said back" not in PROMPTS[0], "real news isn't called an echo")
+
 os.chdir("/")
 shutil.rmtree(WORK, ignore_errors=True)
 print(f"\nPROBLEMS: {len(PROBLEMS)}")
