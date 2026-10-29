@@ -1,0 +1,268 @@
+THE MODULAR SYNTHESIZER: A CROW'S MANUAL
+Everything about the rack in your nest: what every module, knob, jack and cable does, and how to make it sing
+
+----------------------------------------------------------------------
+
+BEFORE ANYTHING: WHAT SOUND IS
+
+Sound is air shaking. When something vibrates, it pushes the air back and forth, and those pushes travel to your ears. A synthesizer makes sound out of electricity: it makes a voltage that wiggles up and down, and a speaker turns that wiggle into moving air.
+
+Every sound has a few things you can change:
+
+PITCH: how fast it wiggles. Fast is high, slow is low. Pitch is measured in hertz (Hz), wiggles per second. The note A that tuning forks play is 440 Hz. Twice as fast is the same note one octave higher.
+
+VOLUME: how big the wiggles are.
+
+TIMBRE (say "TAM-ber"): the character or color of a sound, the reason a trumpet and a flute playing the same note still sound different. Timbre comes from the shape of the wiggle. A smooth, round wave sounds soft and pure. A wave with sharp corners and edges sounds bright, buzzy and rich, because sharp corners are full of higher, quieter tones called harmonics riding on top of the main note.
+
+SHAPE OVER TIME: does the sound start instantly, like a plucked string, or swell in slowly, like wind? Does it stop dead or fade away? That's called its envelope.
+
+A synthesizer gives you a knob for every one of those things. That's all it is: a box of knobs for pitch, volume, timbre and shape.
+
+----------------------------------------------------------------------
+
+WHAT MAKES A SYNTHESIZER "MODULAR"
+
+A normal instrument is one fixed thing. A modular synthesizer is a rack of separate boxes called MODULES, each doing one job. One makes a tone. One shapes the tone. One controls the volume. One makes slow wobbles. You connect them with PATCH CABLES, plugging an output of one module into an input of another. A particular set of knob settings and cable connections is called a PATCH. Making one is called PATCHING.
+
+Your rack is SEMI-MODULAR. That means the most important connections are already made behind the panel, so it makes a sound before you plug in a single cable. Those hidden connections are called NORMALLED connections. The cables you add on top are for movement and surprise: they let one module reach over and turn another module's knob for you, over and over, automatically. That's called MODULATION, and it's where synthesizers come alive.
+
+Your rack lives in your nest. When you sit down at it, you decide everything: the notes, every knob, and every cable. Nobody presets anything. Every patch is yours.
+
+----------------------------------------------------------------------
+
+THE PATH A SOUND TAKES
+
+This is the wiring behind your panel, the road every sound travels:
+
+SEQ plays a note. It tells both oscillators what pitch to play, and tells both envelopes that a note has started.
+VCO 1 and VCO 2 make the raw tones. NOISE makes hiss.
+The MIXER blends those three together.
+The VCF (filter) shapes the timbre, from dark to bright.
+The VCA (amplifier) shapes the volume, following ENV 1.
+The DELAY adds echoes.
+The REVERB adds a room around it.
+OUT is the master volume.
+
+Meanwhile ENV 2 opens and closes the filter on every note, and the LFO waits for you to patch it to something.
+
+Remember the road: SEQ, VCO, MIXER, VCF, VCA, DELAY, REVERB, OUT. If you understand that line, you understand the rack.
+
+----------------------------------------------------------------------
+
+THE MODULES, ONE BY ONE
+
+=== SEQ: the step sequencer ===
+
+The sequencer is the part that plays notes. It's a row of 8 to 16 STEPS that it plays one after another, around and around, like a little music box.
+
+Each step is either a note or a REST (silence). Notes are written as SCALE DEGREES: numbers that count steps up the scale you chose. 0 is the root note, the home note of the scale. 1 is the next note up the scale, 2 the next, and so on. Negative numbers go below the root.
+
+In a seven-note scale (major, minor, dorian, phrygian, lydian, mixolydian), 7 is the root again, one octave higher. In a five-note pentatonic scale, 5 is the root an octave up. In the six-note blues scale, 6 is. In the chromatic scale every one of the 12 notes is a step, so 12 is an octave. You can go from -7 up to 14.
+
+Settings for the whole sequence:
+ROOT: the home note, from C up to B (C, C#, D, D#, E, F, F#, G, G#, A, A#, B).
+SCALE: which set of notes the steps use. Major sounds bright and happy, minor sounds sad or serious, dorian is minor with a hopeful note in it, phrygian is dark and Spanish-sounding, lydian is dreamy and floating, mixolydian is bluesy-bright, pentatonic can't play a wrong note, minor pentatonic is the rock and blues workhorse, blues adds a gritty bent note, and chromatic is every note there is.
+OCTAVE: 1 to 5, how high the root sits. Octave 3 puts A at 220 Hz, a comfortable middle. Octave 1 or 2 is bass. Octave 5 is up high.
+BPM: tempo, beats per minute, from 50 (slow) to 170 (fast).
+DIVISION: 8 means each step is an eighth note (two steps per beat). 16 means each step is a sixteenth note (four per beat), so the same BPM feels twice as busy.
+
+The sequence repeats until the song is about 18 seconds long, then everything rings out for two more seconds.
+
+Knobs:
+GLIDE (0 to 1): at 0, notes jump instantly from one pitch to the next. Turn it up and each note slides into the next, up to about 0.4 seconds. A little glide sounds smooth and vocal; a lot sounds like a siren.
+GATE (0.05 to 1): how long each note holds, as a fraction of its step. Short gate means short, separated, staccato notes. Gate 1 means each note holds until the next one, legato.
+
+=== VCO 1 and VCO 2: the oscillators ===
+
+VCO means Voltage Controlled Oscillator. An oscillator makes a steady tone at the pitch the sequencer tells it. These are the voice of the rack.
+
+WAVE: the shape of the tone.
+  SAW: a ramp that climbs and drops. Bright, buzzy, rich with every harmonic. Sounds like brass or strings. The classic synth sound.
+  SQUARE: jumps between high and low. Hollow, woody, like a clarinet or an old video game.
+  TRIANGLE: gentle slopes up and down. Soft, a little flute-like.
+  SINE: a perfectly round wave with no harmonics at all. Pure and soft, like a whistle or a struck glass.
+OCTAVE (-2 to +2): shifts the oscillator up or down by whole octaves from the sequencer's notes.
+FINE (-1 to +1): nudges the pitch up to one semitone sharp or flat.
+PW (pulse width, 0.05 to 0.95, VCO 1 only, square wave only): how much of each wiggle is spent high versus low. 0.5 is an even square. Moving toward the edges makes the sound thinner and nasal, like a reedy pipe. Patching the LFO to PW makes it shimmer and chorus.
+
+VCO 2 is a second voice with the same wave, octave and fine knobs (no PW). It's already tuned a hair sharp of VCO 1, so playing both at once makes them beat against each other and sound thick and alive. Tricks: set VCO 2 an octave down for a heavy bass, or a FINE of +0.1 to +0.3 for a wide, chorused sound. VCO 2's output can also be patched into VCO 1's pitch to make metallic, bell-like tones (see FM, below).
+
+=== NOISE ===
+
+Noise is random wiggling with no pitch at all: hiss. It's the sound of wind, waves, breath and snare drums.
+COLOR: WHITE noise is bright hiss, like steam. PINK noise is softer and deeper, like a waterfall or wind in trees.
+Noise does nothing until you turn it up in the MIXER (or patch it with a cable).
+
+=== MIXER ===
+
+Three volume knobs, 0 to 1: VCO1, VCO2 and NOISE. Whatever you turn up here goes on to the filter. Balance them like ingredients. A patch always keeps at least a little sound in the mixer; if you turn everything down, VCO 1 comes back up on its own.
+
+=== VCF: the filter ===
+
+VCF means Voltage Controlled Filter. A filter removes part of the sound, and it's the main way to shape timbre. Think of it like a curtain over a window: open it and all the bright light gets in; close it and the room goes dark.
+
+MODE:
+  LOWPASS: lets the low parts through and cuts the high parts. Closing it makes a sound darker, rounder, muffled, like hearing music through a wall. This is the most used filter in all of synthesizers.
+  BANDPASS: keeps only a band in the middle and cuts both lows and highs. Thin, nasal, like a telephone or a voice in a tin can.
+  HIGHPASS: lets highs through and cuts the lows. Thin, airy, fizzy. Great on noise for cymbal-like sounds.
+CUTOFF (0 to 1): where the curtain sits. 0 is about 30 Hz (closed tight, almost nothing gets through a lowpass). 1 is about 15,000 Hz (wide open). Every 0.11 or so on the knob is one octave.
+RESONANCE (0 to 1): boosts the sound right at the cutoff point. Low resonance is smooth. Medium makes a vowel-like, quacky edge. High resonance makes the filter whistle and ring on its own, a "screaming" sound, especially when the cutoff moves.
+ENV (0 to 1): how much ENV 2 opens the filter on each note. 0 means the filter doesn't move. At 1, ENV 2 can push the cutoff up as much as 7 octaves at its peak. A closed cutoff with high ENV makes the classic "wow" or "pew" of a synth pluck: each note starts bright and closes down to dark.
+DRIVE (0 to 1): pushes the sound harder into the filter so it saturates and gets gritty and warm, like a tube amp turned up.
+TRACK (0 to 1): keyboard tracking. At 1, the cutoff follows the notes, one octave up for every octave you play, so high notes stay as bright as low ones. At 0, the cutoff ignores the notes and high notes sound darker.
+
+=== ENV 1 and ENV 2: the envelopes ===
+
+An envelope draws the shape of a sound over time, every time a note plays. ENV 1 is wired to the VCA, so it shapes the VOLUME of each note. ENV 2 is wired to the filter (by the VCF's ENV knob), so it shapes the BRIGHTNESS of each note.
+
+Each envelope has four knobs, called ADSR:
+ATTACK: how long the envelope takes to rise from nothing to full, when a note starts. 0 is instant (about a thousandth of a second), a hard pluck or hit. 1 is about 2 seconds, a slow swell.
+DECAY: once it reaches full, how long it takes to fall to the sustain level. From 5 thousandths of a second (knob at 0) to 3 seconds (knob at 1).
+SUSTAIN: the level it holds at while the note is still held, from 0 (nothing) to 1 (full). This is a level, not a time.
+RELEASE: when the note ends (the gate closes), how long it takes to fade to nothing. From 5 thousandths of a second to 3 seconds.
+
+Shapes to remember:
+Pluck or hit: attack 0, short decay, sustain 0, short release.
+Organ: attack 0, sustain 1, short release (on while held, off when let go).
+Swell or pad: long attack, high sustain, long release.
+Bell: attack 0, long decay, sustain 0, long release.
+
+The envelope starts each time the sequencer plays a note, and releases when that note's gate ends. So the GATE knob on the sequencer and the envelope's sustain and release work together: a short gate with a long release still rings.
+
+=== VCA: the amplifier ===
+
+VCA means Voltage Controlled Amplifier. It's the volume control that ENV 1 moves. Without a VCA, oscillators would drone forever. The VCA is what turns a constant tone into separate notes.
+LEVEL (0.2 to 1): how loud it gets at the top of the envelope. (It never goes below 0.2, so a patch is never silent.)
+
+=== LFO: the low frequency oscillator ===
+
+An LFO is an oscillator too slow to hear as a tone. Instead of making a sound, it makes a slow, repeating movement that you can patch to any knob-input to wobble it automatically. It does NOTHING until you patch a cable from it.
+WAVE: SINE (smooth swaying), TRIANGLE (even up and down), SQUARE (flips between two places: trills and choppy effects), SAW (ramps up, then drops), RANDOM (jumps to a new random value each cycle and holds it, called "sample and hold": robotic, bubbling, computer-like).
+RATE (0 to 1): how fast. 0 is about one cycle every 20 seconds (a slow tide). 1 is 20 cycles a second (a fast buzz or flutter). The middle, around 0.4 to 0.6, is a few wobbles a second.
+
+=== DELAY: echo ===
+
+The delay records the sound and plays it back a moment later, like shouting in a canyon.
+TIME (0 to 1): how long until the echo, from 30 thousandths of a second (a fast slap) to a full second.
+FEEDBACK (0 to 1): how much of each echo feeds back in to echo again. Low is one or two repeats. High is a long trail of repeats fading away.
+TONE (0 to 1): how bright the echoes are. Low tone makes each repeat darker, like an old tape echo. High tone keeps them crisp.
+MIX (0 to 1): how much echo you hear compared to the original. 0 is off.
+
+=== REVERB: a room ===
+
+Reverb is the sound of a space: all the tiny echoes off walls blurred into a wash.
+SIZE (0 to 1): a small room up to a huge cave.
+DAMP (0 to 1): soft walls soak up the high sounds. High damp is warm and dark; low damp is bright and glassy.
+MIX (0 to 1): how much room you hear. 0 is off.
+
+=== OUT ===
+
+VOLUME (0 to 1): how loud the finished song is. Every song is leveled so its loudest moment comes out clean, then VOLUME sets how hard it's played.
+
+----------------------------------------------------------------------
+
+PATCH CABLES: MAKING THINGS MOVE
+
+A cable runs from an OUTPUT to an INPUT, with an AMOUNT from -1 to +1. The amount is how strongly the output moves the input. A negative amount flips it upside down: where it would push up, it pushes down. You can use up to 6 cables. Each output can only be plugged into the same input once.
+
+OUTPUTS you can patch FROM:
+  lfo.out: the LFO's slow wave, swinging between -1 and +1.
+  env1.out: ENV 1's shape, from 0 up to 1 and back on every note.
+  env2.out: ENV 2's shape, the same way.
+  noise.out: random noise, jittering between -1 and +1.
+  vco2.out: VCO 2's actual sound wave, wiggling hundreds of times a second.
+
+INPUTS you can patch TO, and what one full amount does:
+  vco1.pitch and vco2.pitch: bends that oscillator's pitch up to an octave either way. (VCO 2's own sound can't be patched into VCO 2's own pitch.)
+  vco1.pw: moves VCO 1's pulse width up to 0.45 either way (only heard on the square wave).
+  vcf.cutoff: moves the filter cutoff up to 4 octaves either way.
+  vcf.resonance: moves the resonance up to half its range either way.
+  vca.level: multiplies the volume. Amount 1 doubles it at the LFO's top and silences it at its bottom.
+  delay.time: stretches or shrinks the echo time by up to half.
+
+Favorite patches:
+  LFO -> vcf.cutoff (sine, slow rate): the sound slowly brightens and darkens, breathing. With a fast rate and a square wave it's a "wah-wah" chop.
+  LFO -> vco1.pitch (sine, rate around 0.5, small amount like 0.03 to 0.08): VIBRATO, the gentle pitch wobble a singer uses. A big amount is a siren.
+  LFO -> vca.level: TREMOLO, a pulsing volume. A square LFO makes the notes chop into stutters.
+  LFO -> vco1.pw (square wave on VCO 1): shimmering, chorus-like movement.
+  LFO (random) -> vcf.cutoff: each cycle the filter jumps somewhere new: bubbling, robotic, computer chatter.
+  ENV 2 -> vco1.pitch (small amount): each note starts a little sharp and drops into tune, like a drum or a laser "pew". Big amounts make zappy sci-fi sounds.
+  ENV 1 -> vcf.cutoff: the filter follows the volume shape too, so louder means brighter, like a real instrument.
+  NOISE -> vcf.cutoff (small amount): the filter shivers and crackles, like a dusty record or a radio.
+  VCO 2 -> vco1.pitch: this is FM, frequency modulation. VCO 2 wiggles VCO 1's pitch so fast that you don't hear a wobble, you hear a new timbre: metallic, glassy, bell-like or clangorous. Small amounts sound like electric pianos and bells. Big amounts sound like gongs and broken robots. Try sine waves on both oscillators, and set VCO 2 to octave +1 or +2 for bell tones.
+  LFO -> delay.time: the echoes bend in pitch, like a warbling old tape machine.
+
+----------------------------------------------------------------------
+
+RECIPES
+
+These are starting points. Make each one, listen, then change one thing.
+
+DEEP BASS: octave 1 or 2. VCO 1 saw, VCO 2 square octave -1, mixer both high. Lowpass, cutoff 0.3, resonance 0.3, ENV 0.4. ENV 1: attack 0, decay 0.3, sustain 0.6, release 0.2. Gate 0.7. Slow steps with rests.
+
+PLUCK: octave 3 or 4. VCO 1 saw. Lowpass, cutoff 0.25, resonance 0.5, ENV 0.7. ENV 2: attack 0, decay 0.25, sustain 0. ENV 1: attack 0, decay 0.35, sustain 0, release 0.3. Short gate. Add a little delay.
+
+DREAMY PAD: VCO 1 saw, VCO 2 saw with fine 0.2, mixer both. Lowpass, cutoff 0.5, resonance 0.1, ENV 0.2. ENV 1: attack 0.6, decay 0.5, sustain 0.8, release 0.7. Gate 1. Slow BPM, few notes. LFO sine slow to vcf.cutoff 0.3. Reverb size 0.8, mix 0.5.
+
+BELL: VCO 1 sine, VCO 2 sine octave +1, mixer VCO 1 only. Cable vco2.out -> vco1.pitch amount 0.2. Filter wide open (cutoff 0.9), ENV 0. ENV 1: attack 0, decay 0.7, sustain 0, release 0.7. Reverb on.
+
+WIND: mixer VCO 1 at 0, noise at 1, pink. Bandpass, cutoff 0.5, resonance 0.6. LFO sine, rate 0.15, to vcf.cutoff 0.6. ENV 1: attack 0.7, sustain 1, release 0.8, gate 1. Reverb big.
+
+TICKING HATS: mixer noise 1, white. Highpass, cutoff 0.8. ENV 1: attack 0, decay 0.05, sustain 0, release 0.05. Gate 0.1, division 16, every step a note.
+
+ACID LINE: octave 2. VCO 1 saw or square. Lowpass, cutoff 0.25, resonance 0.8, ENV 0.6, drive 0.5. ENV 2: decay 0.2, sustain 0. Glide 0.3. Division 16, busy steps with a few rests, leaps of 7 (an octave) here and there.
+
+ROBOT CHATTER: LFO random, rate 0.6, to vcf.cutoff 0.7. Resonance 0.7. Square wave. Short gate.
+
+----------------------------------------------------------------------
+
+HOW YOU LEARN THE RACK
+
+Nobody understands a whole modular synth on the first day, so the rack opens up as you learn it. Some modules sit in the rack switched off until you're ready:
+
+Level 0: SEQ, VCO 1, MIXER, VCF, ENV 1, ENV 2, VCA and OUT. One voice, a filter and two envelopes. That's the heart of every synthesizer ever built. Master it first.
+Level 1: the LFO, and cables from it. Movement.
+Level 2: VCO 2 and NOISE, and cables from ENV 2.
+Level 3: the DELAY.
+Level 4: the REVERB.
+Level 5: every cable source: ENV 1, NOISE and VCO 2 (FM).
+
+Your synthesis level grows two ways: by patching (practice), and by studying. Everything you write in your synthesis notebook counts, about one level for every five lessons, up to three levels from study.
+
+----------------------------------------------------------------------
+
+HOW TO EXPERIMENT
+
+The best synthesists in the world all do the same thing: they change one thing, listen, and remember what happened.
+
+1. Start simple. One oscillator, filter, envelope. Get a sound you like.
+2. Change ONE knob, on purpose, and listen to the difference. If you change five things at once, you won't know which one did what.
+3. Write down what you learned as a rule: "high resonance plus a moving cutoff makes it whistle". "Short gate and zero sustain makes plucks." Those rules are your real instrument.
+4. Go back to a patch you made and rework it. To revisit an old patch, sit down at the rack with "tweak" and its title, like "tweak Night Wires", then change one to three things and give the new version its own name.
+5. Listen to what came out, not what you hoped. After every patch, notice: was it bright or dark? Full or thin? Plucky or flowing? Did it ring out after the end? Compare that with what you set.
+
+When it sounds wrong, follow the road: SEQ, VCO, MIXER, VCF, VCA, DELAY, REVERB, OUT. Silent? Check the mixer and the envelope. Too dark? The cutoff is too low or the mode is wrong. Too harsh? Lower the cutoff or resonance, or switch from saw to triangle. Mushy? Shorten the release, the gate, or the reverb.
+
+----------------------------------------------------------------------
+
+A FEW WORDS THAT SYNTH PEOPLE USE
+
+Patch: one set of knob settings and cables. Also: to connect a cable.
+Normalled: connected behind the panel already.
+Modulation: one thing automatically moving another.
+CV (control voltage): a signal used to move a knob instead of to be heard, like the LFO or an envelope.
+Gate: an on/off signal that says "a note is held now".
+Harmonics: the quieter, higher tones riding on top of a note that give it its color.
+Detune: two oscillators slightly out of tune with each other, so they shimmer.
+FM: frequency modulation, one oscillator wiggling another's pitch at audio speed to make new timbres.
+Self-oscillation: a filter with resonance so high it starts ringing on its own.
+Drone: one long held note, the floor other sounds dance on.
+
+----------------------------------------------------------------------
+
+A LAST WORD
+
+A modular synthesizer has no right answers. Every knob is a question: what happens if? The rack in your nest can make bass that shakes the branch, bells like ice on the summit, wind through the canyon, or a sound nobody has ever heard before. The only way to find them is to patch, listen, and remember.
+
+THE END

@@ -13,6 +13,9 @@ SRC = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path
 SRC_FILE = SRC if SRC.endswith(".py") else os.path.join(SRC, "creature.py")
 WORK = tempfile.mkdtemp(prefix="bolt_loop_")
 shutil.copy(SRC_FILE, os.path.join(WORK, "creature.py"))
+for extra in os.listdir(os.path.dirname(SRC_FILE)):          # creature.py's helper modules (synth.py, ...)
+    if extra.endswith(".py") and extra != "creature.py":
+        shutil.copy(os.path.join(os.path.dirname(SRC_FILE), extra), os.path.join(WORK, extra))
 os.chdir(WORK)
 spec = importlib.util.spec_from_file_location("creature", "creature.py")
 c = importlib.util.module_from_spec(spec)

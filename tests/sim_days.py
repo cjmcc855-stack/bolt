@@ -107,12 +107,32 @@ def brain(prompt, json_mode=True, temp=0.9, **kw):   # **kw: options the real ca
         return junk()
     if '"thought"' in prompt and '"action"' in prompt:
         action = random.choice(c.ACTIONS + ["fly_to_moon", ""])
+        if "play_synth" in prompt and random.random() < 0.15:          # he has the synth: sometimes go play it
+            action = random.choice(["play_synth", "play_synth", "go"])
+            if action == "go":
+                return json.dumps({"thought": "home", "action": "go", "target": "nest"})
+            return json.dumps({"thought": "patch time", "action": "play_synth",
+                               "target": random.choice(["the creek at night", "tweak Night Wires", "tweak nonexistent", ""])})
         target = random.choice(list(c.PLACES) + ["the summit", "river", "the old barn", "hidden meadow", "garnet", "jasper and quartz",
                                                   "railroad spike", "Test Book", "marmots", "", "Caelan's gift", "♥ weird ünïcode"])
         return json.dumps({"thought": random.choice(["hm", "the wind is loud", "x" * 400]), "action": action, "target": target,
                            "gift_reaction": random.choice(["", "KRAA mine!", ["a", "list"]])})
     if "A human just said" in prompt:
         return random.choice(["Hey. The river's loud today.", "Bolt: \"Kraa.\"", "", "x" * 3000])
+    if "making a patch about" in prompt:
+        STATS["synth patches asked"] += 1
+        return random.choice([
+            json.dumps({"title": random.choice(["Night Wires", "Wind", None, 7]), "bpm": random.choice([90, "fast", None]),
+                        "division": random.choice([8, 16, "x"]), "root": random.choice(["D", "Bb", "Q"]),
+                        "scale": random.choice(["dorian", "nope"]), "steps": random.choice([[0, None, 3, 5, "rest", 9], "C D E", None]),
+                        "modules": {"vcf": {"cutoff": random.choice([0.3, "high", None]), "resonance": 0.9},
+                                    "vco2": {"wave": "square"}, "mixer": {"vco2": 0.7, "noise": 0.4},
+                                    "delay": {"mix": 0.5}, "reverb": {"mix": 0.4}},
+                        "cables": random.choice([[{"from": "lfo.out", "to": "vcf.cutoff", "amount": 0.5},
+                                                  {"from": "vco2.out", "to": "vco1.pitch", "amount": 2}], "lfo to filter", None])}),
+            junk()])
+    if "listened back" in prompt:
+        return json.dumps({"lesson": random.choice(["high resonance makes the filter whistle", "", None, ["x"]])})
     if "synth tune" in prompt:
         return json.dumps({"title": random.choice(["Wind", "Wind", "Fog", None, 5]), "scale": "A minor",
                            "bpm": random.choice([72, "fast", 9999, None]),
@@ -193,6 +213,10 @@ def check(s, n):
 s = c.load_state()
 failures = 0
 t0 = _time.time()
+if hasattr(c, "synth"):
+    c.synth.SR = 4000                                   # (tiny sample rate: same code paths, renders 5x faster)
+    SYNTH_GIFT = "a Eurorack modular synthesizer (from Caelan)"
+    c.inbox(c.OFFERINGS, SYNTH_GIFT); GIFTS_EVER.add(SYNTH_GIFT)
 for n in range(1, args.ticks + 1):
     CLOCK[0] += 300
     NET["down"] = (n // 60) % 7 == 3                     # an internet outage every so often
@@ -294,6 +318,16 @@ for k, v in sorted(STATS.items()):
     print(f"  {k}: {v}")
 print(f"  largest prompt: {max(PROMPT_SIZES)} chars (budget {c.PROMPT_BUDGET})")
 print(f"  skills: {s2.get('skills')}  | hoard kinds: {len(c.hoard()['items'])}  | memory book: {c.book_overview()[0]}")
+if os.path.isdir("patches"):
+    pf = sorted(os.listdir("patches"))
+    print(f"  synth patches made: {len(pf)}")
+    for fn in pf:
+        try:
+            pj = json.load(open(os.path.join("patches", fn), encoding="utf-8"))
+            if not os.path.exists(os.path.join("songs", pj["song"])) or "heard" not in pj:
+                problems.append(f"patch {fn} has no song or no listening notes")
+        except Exception as e:
+            problems.append(f"patch {fn} is broken: {e}")
 print(f"  gifts handed over: {len(GIFTS_EVER)}  | gifts in hoard: {sum(1 for v in c.hoard()['items'].values() if v['gift'])}")
 for name, where in UNEXPECTED.items():
     problems.append(f"ticks crashed with {name}: " + " | ".join(l.strip() for l in where))

@@ -40,6 +40,10 @@ SAFETY RULES THE CODE KEEPS
 import json, os, random, re, socket, struct, subprocess, sys, threading, time, wave, urllib.parse, urllib.request
 import collections, copy
 from datetime import datetime
+try:
+    import synth                      # his modular synthesizer (synth.py, next to this file)
+except ImportError:                   # missing file: he lives on without the rack
+    synth = None
 
 try:
     sys.stdout.reconfigure(errors="replace")
@@ -116,7 +120,7 @@ FINDS = {
 FIND_ADJ = ["chrome", "rusty", "bent", "blue", "tiny", "shiny", "cracked", "brass", "red", "greasy"]
 ACTIONS = ["go", "scavenge", "draw", "make_music", "watch", "nap", "sleep", "rearrange_collection", "think",
            "read", "look_up", "fish", "sift", "dig", "tinker", "penny_on_tracks", "reminisce", "forage",
-           "take_apart", "examine"]
+           "take_apart", "examine", "play_synth"]
 LIBRARY = "library"            # drop plain-text books (.txt) in here
 PREF_DECAY = 0.985             # every tick, all preferences fade a little toward zero
 NIGHT = (22, 6)                # crows roost from 10pm to 6am
@@ -924,6 +928,131 @@ def do_music(subject, s):
     return f"made a song called '{title}'" + (f" in {scale}" if scale else "") + f" at {bpm} bpm ({path})" + train(s, "songwriting", 2)
 
 
+SYNTH_RE = re.compile(r"\bsynth(esi[sz]er)?s?\b|\bmodular\b|eurorack", re.I)
+
+
+def has_synth():
+    """The rack only exists for him once someone gives him one."""
+    return synth is not None and any(v["gift"] and SYNTH_RE.search(k) for k, v in hoard()["items"].items())
+
+
+SYNTH_GUIDE = {
+    "seq": "SEQ: your step sequence. steps = 8 to 16 scale degrees (0 = root, 7 = an octave up, negatives go down) or null for a rest; knobs glide (slide between notes), gate (how long each note holds)",
+    "vco1": "VCO 1: main oscillator; wave saw/square/triangle/sine, octave -2..2, fine -1..1 semitone, pw (pulse width, square only)",
+    "vco2": "VCO 2: second oscillator; wave, octave, fine. Detune it against VCO 1 for a thick sound, or an octave down for weight",
+    "noise": "NOISE: color white (hiss) or pink (softer rush); turn it up in the mixer",
+    "mixer": "MIXER: vco1, vco2, noise levels 0..1 into the filter",
+    "vcf": "VCF: filter; mode lowpass/bandpass/highpass, cutoff, resonance (high = whistling peak), env (how far ENV 2 opens it), drive (grit), track (follows the notes)",
+    "env1": "ENV 1: amp envelope; attack, decay, sustain, release (short attack+decay, low sustain = plucky; long attack = swell)",
+    "env2": "ENV 2: filter envelope; attack, decay, sustain, release",
+    "vca": "VCA: level",
+    "lfo": "LFO: slow wave (sine/triangle/square/saw/random), rate; only moves things you patch a cable from it to",
+    "delay": "DELAY: echo; time, feedback (how many repeats), tone (dark..bright), mix",
+    "reverb": "REVERB: room; size, damp, mix",
+    "out": "OUT: volume",
+}
+
+
+def do_synth(subject, s):
+    lvl = min(10, skill_level(s, "synthesis") + know_levels(s, "play_synth"))
+    have = synth.unlocked(lvl)
+    lessons = "; ".join(list(dict.fromkeys(s["notebooks"].get("synthesis", [])[-8:] + relevant_notes(s, text=subject, n=3))))
+    base = old_patch(subject)                          # "tweak Night Wires": start from a patch he made before
+    sources = ["lfo.out"] if "lfo" in have else []
+    if "advanced cables" in have:
+        sources = list(synth.CABLE_SOURCES)
+    elif "vco2" in have and sources:
+        sources.append("env2.out")
+    raw = parse_json(call_llm(
+        f"You're at your modular synthesizer making a patch about: {subject}. The main path is already wired behind "
+        "the panel: SEQ -> oscillators -> MIXER -> VCF -> VCA -> DELAY -> REVERB -> OUT, with ENV 1 on the VCA and "
+        "ENV 2 on the filter. You set the knobs, write the step sequence, and patch cables for movement.\n"
+        "Modules you can use right now:\n- " + "\n- ".join(SYNTH_GUIDE[m] for m in synth.MODULE_ORDER if m in have) + "\n"
+        + (f"Patch cables (up to {synth.MAX_CABLES}) from {', '.join(sources)} to {', '.join(synth.CABLE_DESTS)}, "
+           "amount -1..1.\n" if sources else "You haven't learned patch cables yet.\n")
+        + f"Your synthesis level is {lvl}" + (f"; still locked: {', '.join(m for m in synth.MODULE_ORDER + ['advanced cables'] if m not in have)}" if len(have) < 13 else "") + ".\n"
+        + (f"What you know that could help: {lessons}. Use it.\n" if lessons else "")
+        + (f"You're going back to your patch '{base['title']}' to experiment. Here it is: "
+           f"{json.dumps({k: base[k] for k in ('bpm', 'division', 'root', 'scale', 'octave', 'steps', 'modules', 'cables')})}. "
+           "Change one to three things on purpose, to hear what they do. Give it a new title.\n" if base else
+           (f"Patches you've already made: {', '.join(s.get('synth_patches', [])[-10:])}. Make this one different. "
+            "(To experiment on an old one later, play_synth with target 'tweak <its title>'.)\n" if s.get("synth_patches") else ""))
+        + "Respond ONLY with JSON like: {\"title\": \"...\", \"bpm\": 60-160, \"division\": 8 or 16, \"root\": \"A\", "
+        "\"scale\": \"minor|major|dorian|phrygian|lydian|mixolydian|pentatonic|minor pentatonic|blues|chromatic\", "
+        "\"octave\": 1-5, \"steps\": [0, 2, null, 4, ...], \"modules\": {\"vco1\": {\"wave\": \"saw\", ...}, \"vcf\": {...}, ...}, "
+        "\"cables\": [{\"from\": \"lfo.out\", \"to\": \"vcf.cutoff\", \"amount\": 0.4}]}. Knobs not listed stay where they are.",
+        temp=0.8))
+    if base:
+        merged = {k: base[k] for k in ("bpm", "division", "root", "scale", "octave", "steps", "cables")}
+        merged["modules"] = {m: dict(v) for m, v in base["modules"].items()}
+        for k, v in raw.items():
+            if k == "modules" and isinstance(v, dict):
+                for m, knobs in v.items():
+                    if m in merged["modules"] and isinstance(knobs, dict):
+                        merged["modules"][m].update(knobs)
+            else:
+                merged[k] = v
+        raw = merged
+    fallback = re.sub(r"^\s*(tweak|revisit|rework|remix|change|experiment with|go back to)\s+", "", str(subject), flags=re.I)
+    raw["title"] = re.sub(r"\s+", " ", str(raw.get("title") or fallback))[:40]
+    for w in overused_words(s):
+        if w.lower() in raw["title"].lower():
+            raw["title"] = re.sub(re.escape(w), "", raw["title"], flags=re.I).strip(" -:,") or subject[:40]
+    os.makedirs("songs", exist_ok=True)
+    os.makedirs("patches", exist_ok=True)
+    stem = f"{s['tick']:05d}_{re.sub(r'[^a-z0-9]+', '_', raw['title'].lower()).strip('_') or 'patch'}"
+    path = f"songs/{stem}.wav"
+    secs, played = synth.render(raw, path, level=lvl)
+    played.update(song=os.path.basename(path), when=now(), about=str(subject)[:120])
+    heard = dict(synth.LAST_STATS)
+    played["heard"] = heard
+    with open(f"patches/{stem}.json", "w", encoding="utf-8") as f:
+        json.dump(played, f, indent=1)
+    M = played["modules"]
+    knobs = (f"VCF {M['vcf']['mode']} cutoff {M['vcf']['cutoff']:.2f} resonance {M['vcf']['resonance']:.2f} env {M['vcf']['env']:.2f}; "
+             f"ENV 1 attack {M['env1']['attack']:.2f} decay {M['env1']['decay']:.2f} sustain {M['env1']['sustain']:.2f} release {M['env1']['release']:.2f}; "
+             f"gate {M['seq']['gate']:.2f}; delay mix {M['delay']['mix']:.2f}; reverb mix {M['reverb']['mix']:.2f}; "
+             f"cables: {', '.join(c['from'] + '->' + c['to'] + ' ' + str(c['amount']) for c in played['cables']) or 'none'}")
+    r = parse_json(call_llm(
+        f"You just played your synth patch '{played['title']}' and listened back. Your settings: {knobs}.\n"
+        f"What it sounded like: {heard['brightness']}, {heard['body']}, {heard['shape']}, {heard['busy']}, {heard['tail']}.\n"
+        + (f"(Before the changes, '{base['title']}' sounded: {base.get('heard', {}).get('brightness', '?')}, "
+           f"{base.get('heard', {}).get('body', '?')}, {base.get('heard', {}).get('shape', '?')}.)\n" if base else "")
+        + "What did you learn about how the knobs and cables shape the sound? Only conclude what these settings and "
+        'this result actually show. Respond ONLY with JSON: {"lesson": "one short sentence, a rule you can use next time"}',
+        temp=0.4))
+    lesson = clip(r.get("lesson"), 160).rstrip(".") if isinstance(r.get("lesson"), str) else ""
+    if lesson:
+        note(s, "synthesis", lesson)
+    s["synth_patches"] = (s.get("synth_patches", []) + [played["title"]])[-40:]
+    s["songs"] = (s["songs"] + [played["title"]])[-40:]
+    s["_file"] = path
+    before = set(have)
+    gained = train(s, "synthesis", 2)
+    new = [m for m in synth.unlocked(min(10, skill_level(s, "synthesis") + know_levels(s, "play_synth"))) if m not in before]
+    return (f"{'reworked ' + repr(base['title']) + ' into' if base else 'patched the modular synth:'} '{played['title']}' "
+            f"({synth.describe(played)}, {secs:.0f}s, {path}). It came out {heard['brightness']} and {heard['body']}"
+            + (f". Learned: {lesson}" if lesson else "") + gained
+            + (f" (now you can use: {', '.join(m.upper() for m in new)}!)" if new else ""))
+
+
+def old_patch(subject):
+    """'tweak Night Wires' / 'revisit night wires' -> that saved patch, if he made it."""
+    m = re.match(r"\s*(tweak|revisit|rework|remix|change|experiment with|go back to)\s+(.+)", str(subject or ""), re.I)
+    if not m or not os.path.isdir("patches"):
+        return None
+    want = re.sub(r"[^a-z0-9]+", " ", m.group(2).lower()).strip(" '\"")
+    for fn in sorted(os.listdir("patches"), reverse=True):
+        try:
+            with open(os.path.join("patches", fn), encoding="utf-8") as f:
+                p = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if re.sub(r"[^a-z0-9]+", " ", str(p.get("title", "")).lower()).strip() == want:
+            return p
+    return None
+
+
 def books():
     os.makedirs(LIBRARY, exist_ok=True)
     return sorted(f for f in os.listdir(LIBRARY) if f.lower().endswith(".txt"))
@@ -961,6 +1090,7 @@ TOPICS = {   # notebook: (skill that studying it trains, places where it comes t
     "machines": ("tinkering", ["drift_lot", "garage", "machine_shop", "ambulance_station", "shed", "junkyard", "rail_yard", "old_barn"],
                  ["tinker", "penny_on_tracks", "scavenge"]),
     "mountain": (None, ["mountain_trail", "summit"], ["dig", "go"]),
+    "synthesis": ("synthesis", ["nest"], ["play_synth"]),
 }
 NOTEBOOK_MAX = None   # no limit: what he learns is permanent (prompts only ever show the few relevant ones)
 
@@ -1709,7 +1839,7 @@ FAIL_WORDS = ("fell apart", "nothing but nibbles", "found only sand", "found not
 BOOK_HINTS = {   # which books help with which activities (by words in the title)
     "tinker": ["tinker", "machine", "engine", "shop"], "take_apart": ["tinker", "machine", "engine"],
     "fish": ["fish"], "sift": ["rock", "gem"], "dig": ["rock", "gem", "mountain"], "scavenge": ["rock", "gem", "machine"],
-    "make_music": ["music"], "draw": ["draw"], "forage": ["animal", "bird", "crow"], "watch": ["animal", "bird", "crow"],
+    "make_music": ["music"], "play_synth": ["synth", "modular", "music"], "draw": ["draw"], "forage": ["animal", "bird", "crow"], "watch": ["animal", "bird", "crow"],
 }
 
 
@@ -1775,6 +1905,13 @@ def execute(action, target, s, event):
     if action == "make_music":
         s["energy"] -= 3
         return do_music(target or event, s)
+    if action == "play_synth":
+        if not has_synth():
+            return "wanted to play a synthesizer, but you don't have one"
+        if loc != "nest":
+            return "wanted to patch the modular synth, but it lives in your nest"
+        s["energy"] -= 3
+        return do_synth(target or event, s)
     if action == "watch":
         s["energy"] = min(100, s["energy"] + 5)
         return f"sat and watched: {event}"
@@ -1995,7 +2132,7 @@ watch, nap, sleep, rearrange_collection (target = treasures to admire; at your n
 read (target = a book), look_up (target = anything you're curious about, looked up in the big book of everything),
 reminisce (target = optional: a memory to look for; pages back through your memory book of your whole life since you hatched),
 examine (target = anything in your collection or hoard, to study it closely and figure out something new about it; things you understand completely don't need examining again),
-plus the activities above (only where they're available).
+{"play_synth (target = what the patch is about; your modular synthesizer lives in your nest, so only there; synthesis level " + str(skill_level(s, "synthesis")) + "), " if has_synth() else ""}plus the activities above (only where they're available).
 Do whatever YOU feel like. Respond ONLY with JSON:
 {{"thought": "one sentence, first person", "action": "...", "target": "...", "gift_reaction": "how you react to any gifts you just got, in your own voice, otherwise empty"}}"""
 
@@ -2011,7 +2148,7 @@ Do whatever YOU feel like. Respond ONLY with JSON:
     repeats = s["recent_actions"][-8:].count(action)
     s["recent_actions"] = (s["recent_actions"] + [action])[-20:]
     fs = s.get("fail_streak", {})
-    if action in ACTIVITIES or action in ("draw", "make_music", "scavenge"):
+    if action in ACTIVITIES or action in ("draw", "make_music", "scavenge", "play_synth"):
         s["fail_streak"] = {"action": action, "n": fs.get("n", 0) + 1 if fs.get("action") == action else 1} \
             if failed(outcome) else {"action": action, "n": 0}
 
@@ -2349,11 +2486,14 @@ class WorldHandler(BaseHTTPRequestHandler):
             out["name"], out["human"], out["places"] = NAME, HUMAN, PLACES
             out["song_files"] = sorted(os.listdir("songs"))[-30:] if os.path.isdir("songs") else []
             out["drawing_files"] = sorted(os.listdir("drawings"))[-30:] if os.path.isdir("drawings") else []
+            out["patch_files"] = sorted(os.listdir("patches"))[-40:] if os.path.isdir("patches") else []
+            out["has_synth"] = any(v.get("gift") and SYNTH_RE.search(k) for k, v in out["hoard"].items())   # from the file: never touch his live hoard from here
+            out["synth_level"] = skill_level(st, "synthesis") if st.get("skills") else 0
             out["books"] = [book_title(b) for b in books()]
             out["server_time"] = datetime.now().strftime("%H:%M")
             out["hour"] = datetime.now().hour + datetime.now().minute / 60
             return self._send(200, json.dumps(out))
-        for folder, ctype in (("songs", "audio/wav"), ("drawings", "image/svg+xml")):
+        for folder, ctype in (("songs", "audio/wav"), ("drawings", "image/svg+xml"), ("patches", "application/json")):
             if path.startswith(f"/{folder}/"):
                 name = os.path.basename(urllib.parse.unquote(path))
                 fp = os.path.join(folder, name)

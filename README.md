@@ -8,6 +8,7 @@ Built by Caelan, inspired by "Pino," an AI bird living in a 3D web town.
 - Lives in 14 places (nest, junkyard, rail yard, river canyon, lake, mountain trail, summit, old barn, machine shop, drift lot, and more), with **real Mount Shasta weather**, seasons, and day/night.
 - Fishes, sifts river gravel for gems, digs on the mountain, forages, tinkers junk into named inventions, takes them apart, examines things, flattens pennies on the tracks. Skills level up.
 - Reads books from `library/`, looks things up on Wikipedia, writes songs (synth WAVs) and draws (SVG).
+- Once someone gives him a modular synthesizer (`!give a modular synthesizer`), he patches it in his nest: he writes the step sequence, sets every knob and plugs the cables himself, listens back, and writes down what he learned. Modules unlock as his synthesis skill grows. `synth.py` is the engine (13 modules, stdlib DSP); the world page's SYNTH button shows his rack exactly as he patched it, with the step lights, envelopes and LFO moving in time and a scope on the real audio. His library has a manual for it.
 - Remembers everything: a forever memory book, an unlimited hoard (gifts can never be lost), subject notebooks, per-item knowledge, and what each person has told him. Studying counts like practice, and reading can correct something he got wrong (he keeps what he used to think).
 - Talks to people through Discord, his console window, and his web "world."
 
@@ -56,4 +57,4 @@ python tests/creature_loop_test.py
 Secrets (`discord_config.json`), and Bolt's actual life (`state.json`, `hoard.json`, `memory_book.jsonl`, `diary.md`, songs, drawings): those are personal and live only on his PC. Starting fresh hatches a brand new crow.
 
 ## Library
-Original field guides written for him: rocks & gems of Shasta, fishes, music theory for one voice, the crow book, animals of the high mountain, engines/cars/shops, drawing, tinkering, fire safety, and metal fabrication. More can be fetched from Project Gutenberg with `!book`.
+Original field guides written for him: rocks & gems of Shasta, fishes, music theory for one voice, the crow book, animals of the high mountain, engines/cars/shops, drawing, tinkering, fire safety, metal fabrication, and the modular synthesizer. More can be fetched from Project Gutenberg with `!book`.

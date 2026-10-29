@@ -64,6 +64,22 @@
            border-radius: 5px; padding: 8px 12px; z-index: 20; display: none; box-shadow: 0 3px 0 #0008; }
   .offline { color: var(--hp-low); }
   h3 { font-size: 9px; margin: 14px 0 6px; }
+  /* ---- the modular synth ---- */
+  .sheet.synth .box { max-width: 1100px; max-height: 92vh; margin-bottom: 64px; background: #23262d; color: #e9e4d4;
+                      border-color: #111; box-shadow: inset 0 0 0 3px #3a3f4a, 0 4px 0 #0008; }
+  .sheet.synth h2 { color: #ffd866; }
+  .rackwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 6px; background: #0e0f12;
+              box-shadow: inset 0 0 18px #000; margin: 6px 0 8px; }
+  #rack { display: block; width: 100%; min-width: 860px; height: auto; font-family: "Helvetica Neue", Arial, sans-serif; }
+  #rack text { user-select: none; pointer-events: none; }
+  #rack .knob { cursor: help; }
+  .synthbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .synthbar select { flex: 1; min-width: 180px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; padding: 7px;
+                     border: 3px solid #3a3f4a; border-radius: 5px; background: #e9e1c4; color: var(--ink); }
+  .synthinfo { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; color: #d9d3c2; margin: 4px 0 0; }
+  .synthinfo b { color: #ffd866; font-weight: normal; }
+  @media (min-width: 900px) { #swipeHint { display: none; } }
+  .synthbar label { font-size: 8px; display: flex; align-items: center; gap: 4px; }
 </style>
 </head>
 <body>
@@ -91,6 +107,7 @@
   <button class="go" id="sendBtn">TALK</button>
   <button id="stashBtn">STASH</button>
   <button id="songsBtn" title="Songs & drawings">♪ ART</button>
+  <button id="synthBtn" title="Bolt's modular synthesizer">SYNTH</button>
   <button id="namesBtn" title="Show place names">ABC</button>
   <button id="zoomBtn" title="Zoom">⌕</button>
 </div></div>
@@ -129,6 +146,20 @@
   <ul class="list songs" id="songList"></ul>
   <h3>HIS DRAWINGS</h3>
   <div id="artList" class="gallery"></div>
+</div></div>
+
+<div class="sheet synth" id="synthSheet"><div class="box">
+  <button class="close" data-close>X</button>
+  <h2>BOLT'S MODULAR SYNTH</h2>
+  <div class="synthbar">
+    <select id="patchPick" aria-label="Bolt's patches"></select>
+    <button class="go" id="patchPlay">▶ PLAY</button>
+    <label><input type="checkbox" id="showNormals"> BEHIND THE PANEL</label>
+  </div>
+  <p class="synthinfo" id="swipeHint" style="font-size:11px;opacity:.6;margin:6px 0 0">← swipe the rack to see all of it →</p>
+  <div class="rackwrap"><svg id="rack" viewBox="0 0 880 560" role="img" aria-label="Bolt's modular synthesizer rack"></svg></div>
+  <p class="synthinfo" id="patchInfo"></p>
+  <audio id="patchAudio" preload="none" crossorigin="anonymous"></audio>
 </div></div>
 
 <div class="toast" id="toast"></div>
@@ -608,6 +639,392 @@ function centerOnBolt() { const st = $("stage"); if (!st.classList.contains("zoo
   st.scrollTo({ left: sx, top: sy, behavior: "smooth" }); }
 $("zoomBtn").onclick = () => { const st = $("stage"); st.classList.toggle("zoom"); st.style.height = st.classList.contains("zoom") ? Math.min(innerHeight * 0.55, 520) + "px" : "";
   setTimeout(centerOnBolt, 50); };
+
+// ======================= THE MODULAR SYNTH =======================
+// Draws Bolt's rack exactly as he patched it. The sound is his real recording (rendered by synth.py);
+// the lights follow it in time and the scope reads the actual audio.
+const SVGNS = "http://www.w3.org/2000/svg";
+const HPX = 10, ROW_H = 253, RAIL = 12, TOP = 14;          // 1 HP = 10 units, 3U row = 253 units
+const FINISH = {
+  alu:   { a: "#d9dcdf", b: "#b3b8be", ink: "#1b1d21", sub: "#4a4f57" },
+  black: { a: "#2a2c31", b: "#1a1b1f", ink: "#f1ede2", sub: "#9aa0a8" },
+  cream: { a: "#efe8d4", b: "#d9cfb3", ink: "#2b2418", sub: "#6b5f45" },
+  navy:  { a: "#24324f", b: "#18223a", ink: "#f3e9c8", sub: "#9fb0d4" },
+  red:   { a: "#9a2f26", b: "#6f1f19", ink: "#fbe9d0", sub: "#e8b9a0" },
+  olive: { a: "#4f5a39", b: "#3a4329", ink: "#f0ecd6", sub: "#c4c79e" },
+};
+const CABLE_COLORS = ["#e2402f", "#f2c12e", "#2f8fe2", "#3fbf5f", "#f07f2a", "#a65ae0"];
+// [id, row, hp, finish, title, sub]
+const LAYOUT = [
+  ["seq", 0, 32, "black", "SEQ-16", "step sequencer"], ["vco1", 0, 12, "alu", "VCO 1", "oscillator"],
+  ["vco2", 0, 10, "alu", "VCO 2", "oscillator"], ["noise", 0, 6, "red", "NOISE", ""], ["mixer", 0, 10, "cream", "MIX", "3 ch"],
+  ["scope", 0, 14, "black", "SCOPE", "listening"],
+  ["vcf", 1, 14, "navy", "VCF", "multimode filter"], ["env1", 1, 10, "cream", "ENV 1", "amp ADSR"], ["env2", 1, 10, "cream", "ENV 2", "filter ADSR"],
+  ["vca", 1, 6, "alu", "VCA", ""], ["lfo", 1, 10, "olive", "LFO", "slow wave"], ["delay", 1, 12, "black", "DELAY", "echo"],
+  ["reverb", 1, 10, "navy", "VERB", "room"], ["out", 1, 12, "alu", "OUT", "master"],
+];
+const LOCK_AT = { lfo: 1, vco2: 2, noise: 2, delay: 3, reverb: 4 };
+const CV_IN = { "vco1.pitch": "FM", "vco2.pitch": "FM", "vco1.pw": "PWM", "vcf.cutoff": "CUT", "vcf.resonance": "RES", "vca.level": "CV", "delay.time": "TIME" };
+const CV_OUT = { "lfo.out": "OUT", "env1.out": "OUT", "env2.out": "OUT", "noise.out": "OUT", "vco2.out": "OUT" };
+
+const synth = { patch: null, svg: null, jacks: {}, leds: {}, cables: [], mod: {}, ctx: null, analyser: null, raf: 0, files: [] };
+
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function txt(parent, x, y, s, size, fill, anchor = "middle", weight = "700", spacing = "0.6") {
+  const t = el("text", { x, y, "font-size": size, fill, "text-anchor": anchor, "font-weight": weight, "letter-spacing": spacing }, parent);
+  t.textContent = s; return t;
+}
+function screw(g, x, y) {
+  el("circle", { cx: x, cy: y, r: 3.6, fill: "url(#screw)", stroke: "#0006", "stroke-width": .6 }, g);
+  el("line", { x1: x - 2.4, y1: y - 1, x2: x + 2.4, y2: y + 1, stroke: "#0008", "stroke-width": 1.1 }, g);
+}
+
+// A knob. value: 0..1 for normal knobs, or {choices, pick} for switches. bipolar draws the zero mark at the top.
+function knob(g, x, y, r, label, value, f, opts = {}) {
+  const k = el("g", { class: "knob", transform: `translate(${x},${y})` }, g);
+  const ticks = opts.choices ? opts.choices.length : 11;
+  for (let i = 0; i < ticks; i++) {
+    const a = (-135 + 270 * i / (ticks - 1)) * Math.PI / 180, r1 = r + 3, r2 = r + (i % 5 === 0 || opts.choices ? 6.5 : 5);
+    el("line", { x1: Math.sin(a) * r1, y1: -Math.cos(a) * r1, x2: Math.sin(a) * r2, y2: -Math.cos(a) * r2, stroke: f.sub, "stroke-width": .9 }, k);
+  }
+  if (opts.choices) opts.choices.forEach((c, i) => {
+    const a = (-135 + 270 * i / (opts.choices.length - 1)) * Math.PI / 180, rr = r + 13;
+    txt(k, Math.sin(a) * rr, -Math.cos(a) * rr + 2.5, c, 6.2, c === opts.pick ? "#ffd866" : f.sub, "middle", c === opts.pick ? "800" : "500", "0.2");
+  });
+  el("circle", { cx: 1.2, cy: 2.2, r: r + 1.5, fill: "#0007", filter: "url(#blur)" }, k);
+  el("circle", { r: r + 1, fill: "url(#skirt)" }, k);
+  el("circle", { r: r * 0.78, fill: opts.cap || "url(#cap)", stroke: "#0005", "stroke-width": .6 }, k);
+  const v = opts.choices ? opts.choices.indexOf(opts.pick) / Math.max(1, opts.choices.length - 1) : Math.max(0, Math.min(1, value));
+  const ang = -135 + 270 * v;
+  el("line", { x1: 0, y1: -r * 0.2, x2: 0, y2: -r * 0.95, stroke: opts.pointer || "#f4f1e8", "stroke-width": Math.max(1.4, r * 0.16),
+               "stroke-linecap": "round", transform: `rotate(${ang})` }, k);
+  if (label) txt(k, 0, r + (opts.choices ? 23 : 15), label, 7, f.ink);
+  const tip = el("title", {}, k);
+  tip.textContent = `${label || ""}: ${opts.show !== undefined ? opts.show : opts.choices ? opts.pick : (+value).toFixed(2)}`;
+  return k;
+}
+
+// A 3.5 mm jack. Registers its position so cables can find it.
+function jack(g, x, y, id, label, f, kind) {
+  const j = el("g", { transform: `translate(${x},${y})` }, g);
+  el("polygon", { points: [0, 1, 2, 3, 4, 5].map(i => { const a = Math.PI / 3 * i + Math.PI / 6; return `${Math.cos(a) * 7.2},${Math.sin(a) * 7.2}`; }).join(" "),
+                  fill: "url(#nut)", stroke: "#0006", "stroke-width": .5 }, j);
+  el("circle", { r: 4.1, fill: "#0b0b0c", stroke: kind === "out" ? "#d8b04a" : "#777", "stroke-width": 1.2 }, j);
+  el("circle", { r: 2, fill: "#000" }, j);
+  if (label) {
+    if (kind === "out") el("rect", { x: -11, y: 9.5, width: 22, height: 9, rx: 2, fill: f.ink, opacity: .9 }, j);
+    txt(j, 0, 16.6, label, 6.2, kind === "out" ? (f === FINISH.black || f === FINISH.navy || f === FINISH.red || f === FINISH.olive ? "#111" : "#f4f1e8") : f.ink);
+  }
+  if (id) synth.jacks[id] = { x: x + (g._ox || 0), y: y + (g._oy || 0) };
+  return j;
+}
+function led(g, x, y, id, color = "#ff3b2f", r = 2.8) {
+  el("circle", { cx: x, cy: y, r: r + 1.3, fill: "#111", stroke: "#0008" }, g);
+  const l = el("circle", { cx: x, cy: y, r, fill: color, opacity: .12 }, g);
+  const glow = el("circle", { cx: x, cy: y, r: r * 3, fill: color, opacity: 0, filter: "url(#blur)" }, g);
+  synth.leds[id] = [l, glow];
+  return l;
+}
+function setLed(id, v) {
+  const L = synth.leds[id]; if (!L) return;
+  L[0].setAttribute("opacity", (0.12 + 0.88 * v).toFixed(3));
+  L[1].setAttribute("opacity", (0.55 * v).toFixed(3));
+}
+
+function defs(svg) {
+  const d = el("defs", {}, svg);
+  d.innerHTML = `
+    <radialGradient id="cap" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#4a4d55"/><stop offset=".55" stop-color="#202226"/><stop offset="1" stop-color="#0d0e10"/></radialGradient>
+    <radialGradient id="capRed" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#ff8a70"/><stop offset=".6" stop-color="#c8361f"/><stop offset="1" stop-color="#6d140a"/></radialGradient>
+    <radialGradient id="capCream" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#fffaf0"/><stop offset=".6" stop-color="#d9d0bb"/><stop offset="1" stop-color="#8f8670"/></radialGradient>
+    <linearGradient id="skirt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a5d64"/><stop offset="1" stop-color="#151619"/></linearGradient>
+    <radialGradient id="nut" cx="40%" cy="35%" r="75%"><stop offset="0" stop-color="#f4f4f4"/><stop offset=".6" stop-color="#a9adb3"/><stop offset="1" stop-color="#5d6168"/></radialGradient>
+    <radialGradient id="screw" cx="40%" cy="35%" r="75%"><stop offset="0" stop-color="#eee"/><stop offset="1" stop-color="#777"/></radialGradient>
+    <linearGradient id="rail" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d0d3d8"/><stop offset=".5" stop-color="#8d9298"/><stop offset="1" stop-color="#5b6066"/></linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>
+    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="2.2 0.04" numOctaves="2" seed="4" result="n"/>
+      <feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="table" tableValues="0 0.12"/></feComponentTransfer>
+      <feComposite in2="SourceGraphic" operator="in"/><feBlend in="SourceGraphic" mode="multiply"/></filter>
+    <filter id="drop" x="-10%" y="-10%" width="120%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="2.2" flood-opacity=".55"/></filter>`;
+  Object.entries(FINISH).forEach(([k, f]) => {
+    const lg = el("linearGradient", { id: "fin_" + k, x1: 0, y1: 0, x2: 1, y2: 1 }, d);
+    el("stop", { offset: 0, "stop-color": f.a }, lg); el("stop", { offset: 1, "stop-color": f.b }, lg);
+  });
+}
+
+function panel(svg, row, x, hp, fin, title, sub) {
+  const f = FINISH[fin], w = hp * HPX, y = TOP + row * (ROW_H + 26);
+  const g = el("g", { transform: `translate(${x},${y})` }, svg);
+  g._ox = x; g._oy = y;
+  el("rect", { x: .5, y: 0, width: w - 1, height: ROW_H, rx: 1.5, fill: `url(#fin_${fin})`, filter: fin === "alu" ? "url(#grain)" : "", stroke: "#0007" }, g);
+  el("rect", { x: .5, y: 0, width: w - 1, height: 1.2, fill: "#fff", opacity: .25 }, g);
+  screw(g, 7.5, 7); screw(g, w - 7.5, ROW_H - 7);
+  if (hp >= 10) { screw(g, w - 7.5, 7); screw(g, 7.5, ROW_H - 7); }
+  txt(g, w / 2, 26, title, hp <= 6 ? 8.5 : 10.5, f.ink, "middle", "800", "1.4");
+  if (sub) txt(g, w / 2, 36, sub.toUpperCase(), 5.6, f.sub, "middle", "600", "1");
+  txt(g, w / 2, ROW_H - 6, "NEST WORKS", 5, f.sub, "middle", "700", "1.6");
+  return { g, f, w };
+}
+
+function lockOver(svg, row, x, hp, need) {
+  const y = TOP + row * (ROW_H + 26), w = hp * HPX, g = el("g", {}, svg);
+  el("rect", { x, y, width: w, height: ROW_H, fill: "#0b0c0f", opacity: .72 }, g);
+  el("rect", { x: x + w / 2 - 26, y: y + ROW_H / 2 - 16, width: 52, height: 30, rx: 3, fill: "#ffd866", opacity: .92 }, g);
+  txt(g, x + w / 2, y + ROW_H / 2 - 3, "LOCKED", 7, "#222", "middle", "800", "1");
+  txt(g, x + w / 2, y + ROW_H / 2 + 8, `SYNTH LV ${need}`, 5.8, "#222", "middle", "700", "0.6");
+}
+
+function cvIn(P, x, y, id, cablesByDest) {
+  const c = cablesByDest[id];
+  jack(P.g, x, y, id, CV_IN[id], P.f, "in");
+  knob(P.g, x, y - 26, 7, "", c ? (c.amount + 1) / 2 : 0.5, P.f, { show: c ? c.amount.toFixed(2) : "no cable", pointer: c ? "#ffd866" : "#888" });
+}
+
+function drawRack(p) {
+  const svg = $("rack"); svg.innerHTML = ""; synth.jacks = {}; synth.leds = {};
+  defs(svg);
+  // case and rails
+  el("rect", { x: 0, y: 0, width: 880, height: 560, fill: "#151619" }, svg);
+  for (let row = 0; row < 2; row++) {
+    const y = TOP + row * (ROW_H + 26);
+    [y - 9, y + ROW_H - 3].forEach(ry => { el("rect", { x: 14, y: ry, width: 852, height: 12, fill: "url(#rail)" }, svg);
+      for (let hx = 22; hx < 866; hx += 20) el("circle", { cx: hx, cy: ry + 6, r: 1.5, fill: "#3b3e43" }, svg); });
+  }
+  if (!p) { txt(svg, 440, 290, "NO PATCH LOADED", 14, "#555", "middle", "800", "3"); return; }
+  const M = p.modules, lvl = p.level ?? 10, cablesByDest = {};
+  (p.cables || []).forEach(c => cablesByDest[c.to] = c);
+  const xs = [20, 20]; const pos = {};
+  for (const [id, row, hp, fin, title, sub] of LAYOUT) {
+    const P = panel(svg, row, xs[row], hp, fin, title, sub);
+    pos[id] = { row, x: xs[row], hp }; xs[row] += hp * HPX;
+    const w = P.w, f = P.f, m = M[id] || {};
+    if (id === "seq") {
+      const lcd = el("g", {}, P.g);
+      el("rect", { x: 18, y: 46, width: 150, height: 30, rx: 3, fill: "#0d1f12", stroke: "#000" }, lcd);
+      txt(lcd, 24, 59, `${p.root} ${p.scale.toUpperCase()}`, 8.5, "#7dff8a", "start", "700", "1");
+      txt(lcd, 24, 71, `${p.bpm} BPM  1/${p.division}  OCT ${p.octave}`, 7, "#58d466", "start", "600", "0.8");
+      knob(P.g, 196, 62, 11, "GLIDE", m.glide, f, { cap: "url(#capRed)" });
+      knob(P.g, 236, 62, 11, "GATE", m.gate, f, { cap: "url(#capRed)" });
+      knob(P.g, 278, 62, 11, "TEMPO", (p.bpm - 50) / 120, f, { show: p.bpm + " bpm" });
+      const n = p.steps.length, colW = (w - 36) / 16;
+      p.steps.forEach((d, i) => {
+        const cx = 18 + colW * i + colW / 2;
+        led(P.g, cx, 104, "step" + i, d === null ? "#555" : "#ff3b2f", 2.6);
+        el("rect", { x: cx - 2, y: 118, width: 4, height: 84, rx: 2, fill: "#050505", stroke: "#333", "stroke-width": .6 }, P.g);
+        if (d !== null) {
+          const yy = 198 - ((d + 7) / 21) * 76;
+          el("rect", { x: cx - 7, y: yy - 4, width: 14, height: 8, rx: 1.5, fill: "url(#capCream)", stroke: "#0008" }, P.g);
+          txt(P.g, cx, 214, String(d), 6.5, f.ink, "middle", "700");
+        } else txt(P.g, cx, 214, "-", 7, f.sub);
+        txt(P.g, cx, 225, String(i + 1), 5.4, f.sub, "middle", "600");
+      });
+      for (let i = n; i < 16; i++) { const cx = 18 + colW * i + colW / 2; el("circle", { cx, cy: 104, r: 2.6, fill: "#222" }, P.g); }
+    } else if (id === "vco1" || id === "vco2") {
+      knob(P.g, w / 2, 70, 15, "WAVE", 0, f, { choices: ["saw", "square", "triangle", "sine"].map(s => s.slice(0, 3).toUpperCase()), pick: m.wave.slice(0, 3).toUpperCase(), cap: "url(#capCream)" });
+      const one = id === "vco1", cols = one ? [0.2, 0.5, 0.8] : [0.28, 0.72];
+      knob(P.g, w * cols[0], 130, 8.5, "OCT", (m.octave + 2) / 4, f, { show: (m.octave > 0 ? "+" : "") + m.octave });
+      knob(P.g, w * cols[1], 130, 8.5, "FINE", (m.fine + 1) / 2, f, { show: m.fine.toFixed(2) + " st" });
+      if (one) { knob(P.g, w * cols[2], 130, 8.5, "PW", m.pw, f); cvIn(P, w * 0.5, 214, "vco1.pw", cablesByDest); }
+      cvIn(P, w * cols[0], 214, id + ".pitch", cablesByDest);
+      jack(P.g, w * (one ? 0.8 : 0.72), 214, one ? null : "vco2.out", "OUT", f, "out");
+    } else if (id === "noise") {
+      knob(P.g, w / 2, 76, 11, "COLOR", 0, f, { choices: ["WHT", "PNK"], pick: m.color === "pink" ? "PNK" : "WHT", cap: "url(#capCream)" });
+      led(P.g, w / 2, 140, "noise", "#ffb02f");
+      jack(P.g, w / 2, 206, "noise.out", "OUT", f, "out");
+    } else if (id === "mixer") {
+      [["vco1", "VCO 1"], ["vco2", "VCO 2"], ["noise", "NOISE"]].forEach(([k, lab], i) => knob(P.g, w / 2, 62 + i * 46, 11, lab, m[k], f, { cap: "url(#cap)" }));
+      jack(P.g, w / 2, 214, null, "OUT", f, "out");
+    } else if (id === "scope") {
+      const fo = el("foreignObject", { x: 12, y: 46, width: w - 24, height: 112 }, P.g);
+      fo.innerHTML = `<canvas xmlns="http://www.w3.org/1999/xhtml" id="scopeCv" width="${(w - 24) * 2}" height="224" style="width:100%;height:100%;border-radius:4px;background:#06140b"></canvas>`;
+      txt(P.g, w / 2, 176, "WHAT HE HEARS", 6, f.sub, "middle", "700", "1.2");
+      led(P.g, 24, 196, "clip", "#ff3b2f"); txt(P.g, 24, 211, "PEAK", 5.4, f.sub);
+      led(P.g, w - 24, 196, "play", "#3fe06a"); txt(P.g, w - 24, 211, "PLAY", 5.4, f.sub);
+    } else if (id === "vcf") {
+      knob(P.g, w / 2, 66, 17, "CUTOFF", m.cutoff, f, { cap: "url(#capCream)", show: Math.round(30 * 2 ** (m.cutoff * 9)) + " Hz" });
+      el("rect", { x: w / 2 - 25, y: 99, width: 50, height: 12, rx: 2, fill: "#0b1222", stroke: "#000" }, P.g);
+      txt(P.g, w / 2, 108, m.mode.toUpperCase(), 6.6, "#ffd866", "middle", "800", "1.2");
+      knob(P.g, w * 0.22, 128, 10, "RES", m.resonance, f);
+      knob(P.g, w * 0.78, 128, 10, "ENV", m.env, f);
+      knob(P.g, w * 0.5, 146, 8, "DRIVE", m.drive, f);
+      knob(P.g, w * 0.22, 174, 7, "TRACK", m.track, f);
+      cvIn(P, w * 0.5, 220, "vcf.cutoff", cablesByDest); cvIn(P, w * 0.82, 220, "vcf.resonance", cablesByDest);
+    } else if (id === "env1" || id === "env2") {
+      ["attack", "decay", "sustain", "release"].forEach((k, i) => {
+        const x = w / 2, yy = 58 + i * 36;
+        el("rect", { x: x - 2.5, y: yy - 14, width: 5, height: 28, rx: 2, fill: "#0006" }, P.g);
+        el("rect", { x: x - 8, y: yy + 12 - m[k] * 26 - 3, width: 16, height: 7, rx: 1.5, fill: "url(#capCream)", stroke: "#0008" }, P.g);
+        txt(P.g, x - 14, yy + 2, k[0].toUpperCase(), 7.5, f.ink, "end", "800");
+        const tip = el("title", {}, el("rect", { x: x - 12, y: yy - 14, width: 24, height: 28, fill: "transparent" }, P.g));
+        tip.textContent = `${k}: ${(+m[k]).toFixed(2)}`;
+      });
+      led(P.g, w * 0.26, 210, id, "#ffd23a");
+      jack(P.g, w * 0.7, 210, id + ".out", "OUT", f, "out");
+    } else if (id === "vca") {
+      knob(P.g, w / 2, 76, 10, "LEVEL", (m.level - 0.2) / 0.8, f, { show: (+m.level).toFixed(2) });
+      led(P.g, w / 2, 124, "vca", "#3fe06a");
+      cvIn(P, w / 2, 210, "vca.level", cablesByDest);
+    } else if (id === "lfo") {
+      knob(P.g, w / 2, 70, 15, "RATE", m.rate, f, { cap: "url(#capRed)", show: (0.05 * 400 ** m.rate).toFixed(2) + " Hz" });
+      knob(P.g, w / 2, 140, 10, "WAVE", 0, f, { choices: ["SIN", "TRI", "SQR", "SAW", "RND"], pick: { sine: "SIN", triangle: "TRI", square: "SQR", saw: "SAW", random: "RND" }[m.wave] });
+      led(P.g, w * 0.28, 210, "lfo", "#ff3b2f");
+      jack(P.g, w * 0.7, 210, "lfo.out", "OUT", f, "out");
+    } else if (id === "delay") {
+      knob(P.g, w * 0.3, 66, 11, "TIME", m.time, f, { show: Math.round(30 * (1000 / 30) ** m.time) + " ms" });
+      knob(P.g, w * 0.7, 66, 11, "FDBK", m.feedback, f);
+      knob(P.g, w * 0.3, 120, 9, "TONE", m.tone, f);
+      knob(P.g, w * 0.7, 120, 9, "MIX", m.mix, f, { cap: "url(#capRed)" });
+      cvIn(P, w / 2, 214, "delay.time", cablesByDest);
+    } else if (id === "reverb") {
+      knob(P.g, w / 2, 64, 12, "SIZE", m.size, f, { cap: "url(#capCream)" });
+      knob(P.g, w * 0.3, 118, 9, "DAMP", m.damp, f);
+      knob(P.g, w * 0.7, 118, 9, "MIX", m.mix, f, { cap: "url(#capRed)" });
+    } else if (id === "out") {
+      knob(P.g, w / 2, 70, 16, "VOLUME", m.volume, f, { cap: "url(#capCream)" });
+      for (let i = 0; i < 8; i++) led(P.g, w / 2, 190 - i * 9, "vu" + i, i > 5 ? "#ff3b2f" : i > 3 ? "#ffd23a" : "#3fe06a", 2.4);
+      jack(P.g, w / 2, 214, null, "OUT", f, "out");
+    }
+    const need = LOCK_AT[id];
+    if (need !== undefined && lvl < need) lockOver(svg, row, pos[id].x, hp, need);
+  }
+  // behind-the-panel wiring (dashed, only when asked)
+  const nl = el("g", { id: "normals", opacity: $("showNormals").checked ? 1 : 0 }, svg);
+  const mid = id => { const q = pos[id]; return [q.x + q.hp * HPX / 2, TOP + q.row * (ROW_H + 26) + ROW_H / 2]; };
+  [["seq", "vco1"], ["vco1", "vco2"], ["vco2", "noise"], ["noise", "mixer"], ["mixer", "vcf"], ["vcf", "env1"], ["env1", "env2"],
+   ["env2", "vca"], ["vca", "lfo"], ["lfo", "delay"], ["delay", "reverb"], ["reverb", "out"]].forEach(([a, b]) => {
+    const [x1, y1] = mid(a), [x2, y2] = mid(b);
+    el("path", { d: `M${x1},${y1} C${x1 + 40},${y1} ${x2 - 40},${y2} ${x2},${y2}`, stroke: "#8fd3ff", "stroke-width": 2, "stroke-dasharray": "4 4", fill: "none", opacity: .7 }, nl);
+  });
+  // patch cables, drawn last so they hang over everything
+  synth.cables = (p.cables || []).map((c, i) => {
+    const a = synth.jacks[c.from], b = synth.jacks[c.to];
+    if (!a || !b) return null;
+    const col = CABLE_COLORS[i % CABLE_COLORS.length], g = el("g", {}, svg);
+    const shadow = el("path", { stroke: "#000", "stroke-opacity": .45, "stroke-width": 7, fill: "none", "stroke-linecap": "round", filter: "url(#blur)" }, g);
+    const body = el("path", { stroke: col, "stroke-width": 5.2, fill: "none", "stroke-linecap": "round" }, g);
+    const shine = el("path", { stroke: "#fff", "stroke-opacity": .35, "stroke-width": 1.4, fill: "none", "stroke-linecap": "round" }, g);
+    [a, b].forEach(pt => { el("circle", { cx: pt.x, cy: pt.y, r: 6.4, fill: "#16171a", stroke: "#000", "stroke-width": .8 }, g);
+      el("circle", { cx: pt.x, cy: pt.y, r: 4.2, fill: col }, g); el("circle", { cx: pt.x - 1.4, cy: pt.y - 1.6, r: 1.4, fill: "#fff", opacity: .45 }, g); });
+    const t = el("title", {}, g); t.textContent = `${c.from} -> ${c.to}  (amount ${c.amount})`;
+    const floor = (548 - Math.max(a.y, b.y)) / 0.75;     // a cubic dips about 3/4 of its sag: stay inside the case
+    return { a, b, paths: [shadow, body, shine], phase: i * 1.7, sag: Math.max(12, Math.min(46 + Math.hypot(b.x - a.x, b.y - a.y) * 0.28, floor - 4)) };
+  }).filter(Boolean);
+  layCables(0);
+}
+function layCables(t) {
+  synth.cables.forEach(c => {
+    const sway = Math.sin(t / 1400 + c.phase) * 3.5, sag = c.sag + sway;
+    const d = `M${c.a.x},${c.a.y} C${c.a.x + sway},${c.a.y + sag} ${c.b.x - sway},${c.b.y + sag} ${c.b.x},${c.b.y}`;
+    c.paths[0].setAttribute("d", d.replace(/(\d+(\.\d+)?),(\d+(\.\d+)?)/g, (_, x, __, y) => `${+x + 1.5},${+y + 3}`));
+    c.paths[1].setAttribute("d", d); c.paths[2].setAttribute("d", d);
+  });
+}
+
+// ---- following the music ----
+function envAt(e, since, gateLen) {          // the same ADSR shape synth.py draws
+  const T = (x, lo, hi) => lo * (hi / lo) ** x;
+  const A = T(e.attack, .001, 2), D = T(e.decay, .005, 3), R = T(e.release, .005, 3), S = e.sustain;
+  const held = t => t < A ? t / A : t < A + D ? 1 - (1 - S) * (t - A) / D : S;
+  if (since < gateLen) return held(since);
+  const v0 = held(gateLen), r = since - gateLen;
+  return r < R ? v0 * (1 - r / R) : 0;
+}
+function lfoAt(m, t) {
+  const hz = 0.05 * 400 ** m.rate, ph = (t * hz) % 1;
+  return { sine: Math.sin(2 * Math.PI * ph), triangle: ph < .5 ? 4 * ph - 1 : 3 - 4 * ph, square: ph < .5 ? 1 : -1, saw: 2 * ph - 1,
+           random: Math.sin(Math.floor(t * hz) * 12.9898) }[m.wave];
+}
+function animate(now) {
+  if (!$("synthSheet").classList.contains("open")) { synth.raf = 0; return; }   // rack closed: stop drawing
+  synth.raf = requestAnimationFrame(animate);
+  layCables(now);
+  const p = synth.patch, au = $("patchAudio");
+  if (!p) return;
+  const playing = !au.paused && !au.ended, t = au.currentTime || 0;
+  const step = p.timing ? p.timing.step : 60 / p.bpm / (p.division === 8 ? 2 : 4);
+  const reps = p.timing ? p.timing.repeats : 1, n = p.steps.length, total = n * reps;
+  const si = Math.floor(t / step), cur = playing && si < total ? si % n : -1;
+  for (let i = 0; i < n; i++) setLed("step" + i, i === cur ? 1 : 0);
+  // time since the last note started, and how long its gate is
+  let since = 99, gate = step * p.modules.seq.gate;
+  if (playing) for (let k = Math.min(si, total - 1); k >= 0 && k > si - n - 1; k--) if (p.steps[k % n] !== null) { since = t - k * step; break; }
+  setLed("env1", playing ? envAt(p.modules.env1, since, gate) : 0);
+  setLed("env2", playing ? envAt(p.modules.env2, since, gate) : 0);
+  setLed("lfo", playing ? (lfoAt(p.modules.lfo, t) + 1) / 2 : 0);
+  setLed("noise", playing && p.modules.mixer.noise > .05 ? .4 + .6 * Math.random() : 0);
+  setLed("play", playing ? 1 : 0);
+  let level = 0;
+  const cv = document.getElementById("scopeCv");
+  if (cv && synth.analyser) {
+    const a = synth.analyser, buf = new Float32Array(a.fftSize); a.getFloatTimeDomainData(buf);
+    const g = cv.getContext("2d"), W = cv.width, H = cv.height;
+    g.fillStyle = "rgba(6,20,11,.45)"; g.fillRect(0, 0, W, H);
+    g.strokeStyle = "#163a22"; g.lineWidth = 1;
+    for (let x = 0; x <= W; x += W / 8) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+    for (let y = 0; y <= H; y += H / 4) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+    let start = 0;                                         // trigger on a rising zero crossing so the wave stands still
+    for (let i = 1; i < buf.length / 2; i++) if (buf[i - 1] < 0 && buf[i] >= 0) { start = i; break; }
+    g.strokeStyle = "#7dff8a"; g.lineWidth = 2.4; g.shadowColor = "#7dff8a"; g.shadowBlur = 8; g.beginPath();
+    const span = Math.min(buf.length - start, 512);
+    for (let i = 0; i < span; i++) { const v = buf[start + i]; level = Math.max(level, Math.abs(v));
+      const x = i / (span - 1) * W, y = H / 2 - v * H * 0.42; i ? g.lineTo(x, y) : g.moveTo(x, y); }
+    g.stroke(); g.shadowBlur = 0;
+  }
+  setLed("clip", level > .95 ? 1 : 0);
+  setLed("vca", playing ? Math.min(1, level * 1.4) : 0);
+  for (let i = 0; i < 8; i++) setLed("vu" + i, playing && level > (i + 1) / 9 ? 1 : 0);
+}
+
+async function loadPatch(file) {
+  try {
+    const r = await fetch("/patches/" + encodeURIComponent(file), { cache: "no-store" });
+    const p = await r.json(); synth.patch = p;
+    drawRack(p);
+    const au = $("patchAudio"); au.pause(); au.src = "/songs/" + encodeURIComponent(p.song);
+    const h = p.heard || {};
+    $("patchInfo").innerHTML = `<b>${esc(p.title)}</b>${p.about ? ` · about ${esc(p.about)}` : ""}${p.when ? ` · ${esc(p.when)}` : ""}<br>` +
+      `${esc(p.root)} ${esc(p.scale)} · ${p.bpm} bpm · ${(p.cables || []).length} cable${(p.cables || []).length === 1 ? "" : "s"} · synth level ${p.level}` +
+      (h.brightness ? `<br>What he heard: ${esc(h.brightness)}, ${esc(h.body)}, ${esc(h.shape)}, ${esc(h.busy)}, ${esc(h.tail)}.` : "");
+    $("patchPlay").textContent = "▶ PLAY";
+  } catch { toast("Couldn't load that patch"); }
+}
+$("synthBtn").onclick = () => {
+  const s = state || {};
+  const files = (s.patch_files || []).slice().reverse();
+  const pick = $("patchPick");
+  pick.innerHTML = files.map(f => `<option value="${esc(f)}">${esc(f.replace(/^\d+_/, "").replace(/\.json$/, "").replace(/_/g, " "))}</option>`).join("");
+  $("synthSheet").classList.add("open");
+  if (!synth.raf) synth.raf = requestAnimationFrame(animate);
+  if (files.length) { if (!synth.patch || pick.value !== synth.file) loadPatch(pick.value); synth.file = pick.value; }
+  else {
+    synth.patch = null; drawRack(null);
+    $("patchInfo").textContent = s.has_synth ? "He has the synth but hasn't patched anything yet. He keeps it in his nest."
+                                             : "Bolt doesn't have a modular synth yet. Give him one!";
+  }
+};
+$("patchPick").onchange = e => { synth.file = e.target.value; loadPatch(e.target.value); };
+$("showNormals").onchange = e => { const g = document.getElementById("normals"); if (g) g.setAttribute("opacity", e.target.checked ? 1 : 0); };
+$("patchPlay").onclick = async () => {
+  const au = $("patchAudio");
+  if (!au.src) return;
+  if (!synth.ctx) {                                   // the scope listens to the real recording
+    try {
+      synth.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = synth.ctx.createMediaElementSource(au); synth.analyser = synth.ctx.createAnalyser();
+      synth.analyser.fftSize = 2048; src.connect(synth.analyser); synth.analyser.connect(synth.ctx.destination);
+    } catch { synth.analyser = null; }
+  }
+  if (synth.ctx && synth.ctx.state === "suspended") await synth.ctx.resume();
+  if (au.paused) { au.currentTime = au.ended ? 0 : au.currentTime; au.play().catch(() => toast("Couldn't play it")); $("patchPlay").textContent = "■ STOP"; }
+  else { au.pause(); au.currentTime = 0; $("patchPlay").textContent = "▶ PLAY"; }
+};
+["ended", "pause"].forEach(ev => $("patchAudio").addEventListener(ev, () => $("patchPlay").textContent = "▶ PLAY"));
+drawRack(null);
 
 // sheets
 function close() { document.querySelectorAll(".sheet").forEach(s => s.classList.remove("open")); document.querySelectorAll("audio").forEach(a => a.pause()); }
