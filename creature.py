@@ -148,7 +148,7 @@ FINDS = {
 FIND_ADJ = ["chrome", "rusty", "bent", "blue", "tiny", "shiny", "cracked", "brass", "red", "greasy"]
 ACTIONS = ["go", "scavenge", "draw", "make_music", "watch", "nap", "sleep", "rearrange_collection", "think",
            "read", "look_up", "fish", "sift", "dig", "tinker", "penny_on_tracks", "reminisce", "forage",
-           "take_apart", "examine", "play_synth"]
+           "take_apart", "examine", "play_synth", "talk_to"]
 LIBRARY = "library"            # drop plain-text books (.txt) in here
 PREF_DECAY = 0.985             # every tick, all preferences fade a little toward zero
 NIGHT = (22, 6)                # crows roost from 10pm to 6am
@@ -399,6 +399,14 @@ def mostly_foreign(text):
     foreign = sum(len(m) for m in FOREIGN.findall(text))
     latin = len(re.findall(r"[A-Za-z]", text))
     return foreign > 12 and foreign > 0.3 * (foreign + latin)
+
+
+def plain_title(s, title, fallback):
+    """A song or patch title. The model sometimes slips a few Chinese characters into one ('Eternal涟漪'); those go,
+    but foreign words he's actually picked up (his words list) stay."""
+    mine = set(s.get("words", []))
+    out = FOREIGN.sub(lambda m: m.group() if m.group() in mine else " ", title)
+    return re.sub(r"\s+", " ", out).strip(" -:,") or str(fallback)
 
 
 def call_llm(user, json_mode=True, temp=0.9, allow_foreign=False):
@@ -999,7 +1007,7 @@ def do_music(subject, s):
     except (TypeError, ValueError):
         bpm = 110
     os.makedirs("songs", exist_ok=True)
-    title = str(data.get("title") or subject)[:40]
+    title = plain_title(s, str(data.get("title") or subject), subject)[:40]
     s["songs"] = (s["songs"] + [title])[-40:]
     stem = f"{s['tick']:05d}_{re.sub(r'[^a-z0-9]+', '_', title.lower())}"
     path = f"songs/{stem}.wav"
@@ -1141,7 +1149,7 @@ def do_synth(subject, s):
                 merged[k] = v
         raw = merged
     fallback = re.sub(r"^\s*(tweak|revisit|rework|remix|change|experiment with|go back to)\s+", "", str(subject), flags=re.I)
-    raw["title"] = re.sub(r"\s+", " ", str(raw.get("title") or fallback))[:40]
+    raw["title"] = plain_title(s, str(raw.get("title") or fallback), fallback)[:40]
     for w in overused_words(s):
         if w.lower() in raw["title"].lower():
             raw["title"] = re.sub(re.escape(w), "", raw["title"], flags=re.I).strip(" -:,") or subject[:40]
@@ -2009,6 +2017,8 @@ def resolve_place(target):
     for word in t.split("_"):
         if word in PLACE_ALIASES:
             return PLACE_ALIASES[word]
+        if word in OTHER_PLACES:                         # "spike's fir", "the fir tree" (whole words only)
+            return word
     return target
 
 
@@ -2060,6 +2070,12 @@ BOOK_HINTS = {   # which books help with which activities (by words in the title
 
 def failed(outcome):
     return any(w in outcome for w in FAIL_WORDS)
+
+
+def didnt_happen(outcome):
+    """He only wanted to, or went looking and it wasn't there: the thing itself never happened."""
+    return outcome.startswith(("wanted to ", "went looking for ", "looked around for ", "went to find ",
+                               "thought about taking apart ", "thought about talking to "))
 
 
 def stuck_note(s):
@@ -2208,7 +2224,7 @@ DOING = {"fish": "fishing", "sift": "sifting the gravel", "dig": "digging in the
          "make_music": "making up a song", "play_synth": "patching his synth", "read": "reading", "look_up": "reading",
          "watch": "watching", "nap": "napping", "examine": "studying his things", "reminisce": "remembering",
          "rearrange_collection": "fussing over his shelf", "penny_on_tracks": "putting a penny on the rails",
-         "think": "thinking"}
+         "think": "thinking", "talk_to": "chatting"}
 
 
 class WorldTown(LocalTown):
@@ -2294,7 +2310,8 @@ class WorldTown(LocalTown):
     def here(self, loc):
         if self.seen is None or loc != self.start_loc:      # away, or he's flown since he looked
             return None
-        return [{"name": clip(str(h["name"]), 32), "state": h.get("state") or "awake", "doing": h.get("doing")}
+        return [{"name": clip(str(h["name"]), 32), "state": h.get("state") or "awake", "doing": h.get("doing"),
+                 "id": h.get("id")}
                 for h in self.seen.get("here") or [] if isinstance(h, dict) and h.get("name") and h.get("id") != "bolt"]
 
     def after_turn(self, s, action, target, outcome):
@@ -2443,8 +2460,56 @@ def send_outbox(s, restarted=False):
         save_state(s)
 
 
+def fellow_named(s, target):
+    """The creature he means, if the target names one he knows ('spike', 'Spike the jay')."""
+    t = str(target or "").lower()
+    return next((n for n in list(FELLOWS) + list(s.get("fellows", {})) if re.search(rf"\b{re.escape(n.lower())}\b", t)), None)
+
+
+def do_talk_to(target, s):
+    """He starts a conversation with a creature at his place in the shared town: one model call for what he says,
+    sent as a town 'say' (the town's own talk limits apply). They hear it and answer like any other talk."""
+    loc = s["location"]
+    here = TOWN.here(loc) or []
+    name = fellow_named(s, target) or (here[0]["name"] if len(here) == 1 else None)
+    who = next((c for c in here if c["name"] == name), None)
+    if not here:
+        return "wanted to talk to someone, but nobody else is here"
+    if not who:
+        return f"wanted to talk to {name or target or 'someone'}, but {name or 'they'} isn't here"
+    if who["state"] != "awake":
+        return f"thought about talking to {name}, but {name} is {STATE_WORDS.get(who['state'], who['state'])}, so you let them be"
+    crutch = overused_words(s)
+    line = call_llm(
+        f"You're {NAME}, a crow, at the {loc}. {name} is here with you ({looks(who)}).\n"
+        + fellow_facts(s, [], {}, here)                   # who they are, and your last talks with them
+        + "What you've been doing lately:\n" + "".join(f"- {clip(m['text'], 160)}\n" for m in s["memories"][-4:])
+        + f"How you talk: {s.get('voice') or 'short, blunt, bird-brained'}\n"
+        f"You start talking to {name}: whatever's actually on your mind (something you did or found, something you "
+        f"wonder about, or a question for them). Something new, not what you've already said to them. "
+        "1 or 2 short sentences, plain, like a bird talking to a friend, not a poem. "
+        + (f"Don't use these overused words: {', '.join(crutch)}. " if crutch else "")
+        + f"Output only what {NAME} says, no quotes, no name label.", json_mode=False, temp=0.85)
+    line = clip(plainer(s, re.sub(rf"^\*?\*?{NAME}\*?\*?:\s*", "", str(line)).strip().strip('"')), 300)
+    if not line:
+        return f"thought about talking to {name}, but couldn't think what to say"
+    queue_action(s, "say", text=line, to=who["id"])
+    f = s.setdefault("fellows", {}).setdefault(name, {})
+    f["lately"] = (f.get("lately", []) + [{"when": now(), "where": loc, "they": "", "me": line}])[-3:]
+    return f'said to {name}: "{line}"'
+
+
 def execute(action, target, s, event):
     loc = s["location"]
+    if action == "go" and fellow_named(s, target) and not callable_place(resolve_place(target)):   # "go Spike", not "Spike's fir"
+        name = fellow_named(s, target)
+        if any(c["name"] == name for c in TOWN.here(loc) or []):
+            return f"went to find {name}, but {name}'s right here with you at the {loc.replace('_', ' ')}"
+        met = s.get("fellows", {}).get(name, {})
+        return (f"went looking for {name}, but {name} isn't here"
+                + (f" (you last saw {name} at the {met['seen_at'].replace('_', ' ')})" if met.get("seen_at") else ""))
+    if action == "talk_to":
+        return do_talk_to(target, s)
     if action == "go":
         target = resolve_place(target)
         if target == loc:
@@ -2665,7 +2730,8 @@ def fellow_facts(s, heard, creatures, here):
         lines.append("- " + ". ".join(b[:1].upper() + b[1:] for b in bits) + ".")
         if lately and name not in creatures:                 # talking to him, the past conversations already show it
             lines += [f"  {when_said(t['when'])}{' at the ' + t['where'].replace('_', ' ') if t.get('where') else ''}, "
-                      f"{name} said \"{t['they']}\" and " + (f"you said \"{t['me']}\"" if t["me"] else "you didn't answer")
+                      + (f"{name} said \"{t['they']}\" and " + (f"you said \"{t['me']}\"" if t["me"] else "you didn't answer")
+                         if t["they"] else f"you said to {name}: \"{t['me']}\"")
                       for t in lately[-2:]]
     return ("Other creatures you know (creatures like you, not you and not human; bring one up only if this is "
             "about them):\n" + "\n".join(lines) + "\n") if lines else ""
@@ -2952,6 +3018,9 @@ def tick(s):
         said, reply = just["said"], just["reply"]          # he answered a moment ago: the turn knows what was said
     s["weather"] = weather
     sky = f"{weather}, {wx['temp_f']}°F, wind {wx['wind_mph']} mph (the real weather on the mountain right now)" if wx else weather
+    awake_here = [c["name"] for c in TOWN.here(loc) or [] if c["state"] == "awake"]
+    talk_option = (f"talk_to (target = {' or '.join(awake_here)}, here with you: start a conversation, say whatever's "
+                   f"on your mind), " if awake_here else "")
     prompt = f"""It's {datetime.now().strftime('%B')} ({season()}), {tod}. Weather: {sky}. You're at the {loc}: {place_desc(loc)}
 Right now: {event}.
 {town_note}
@@ -2992,7 +3061,7 @@ watch, nap, sleep, rearrange_collection (target = treasures to admire; at your n
 read (target = a book), look_up (target = anything you're curious about, looked up in the big book of everything),
 reminisce (target = optional: a memory to look for; pages back through your memory book of your whole life since you hatched),
 examine (target = anything in your collection or hoard, to study it closely and figure out something new about it; things you understand completely don't need examining again),
-{"play_synth (target = what the patch is about; your modular synthesizer lives in your nest, so only there; synthesis level " + str(skill_level(s, "synthesis")) + "), " if has_synth() else ""}plus the activities above (only where they're available).
+{"play_synth (target = what the patch is about; your modular synthesizer lives in your nest, so only there; synthesis level " + str(skill_level(s, "synthesis")) + "), " if has_synth() else ""}{talk_option}plus the activities above (only where they're available).
 Do whatever YOU feel like. Respond ONLY with JSON:
 {{"thought": "one sentence, first person", "action": "...", "target": "..."}}"""
 
@@ -3017,6 +3086,7 @@ Do whatever YOU feel like. Respond ONLY with JSON:
         f"You just did this: {outcome}. Your thought beforehand: {thought}\n"
         + (f"Things you know about this: {'; '.join(relevant_notes(s, s['location'], action, outcome, 3))}\n" if relevant_notes(s, s['location'], action, outcome, 3) else "")
         + (f"You've done this {repeats} times in your last 8 moves. Repetition gets boring.\n" if repeats >= 2 else "")
+        + ("That didn't actually happen: you didn't get to do it.\n" if didnt_happen(outcome) else "")
         + "How did it honestly make you feel? Use the whole scale: most moments are just okay (0), "
         "boring or repetitive things are -1, bad things are -2, nice things are +1, and +2 is only for truly special moments. "
         'Respond ONLY with JSON: {"feeling": <integer -2 to 2>, "reflection": "one short first-person sentence"}', temp=0.7))
@@ -3024,6 +3094,8 @@ Do whatever YOU feel like. Respond ONLY with JSON:
         feeling = int(clamp(int(r.get("feeling", 0)), -2, 2))
     except Exception:
         feeling = 0
+    if didnt_happen(outcome):
+        feeling = min(feeling, 0)                         # something that didn't happen can't be a win
     reflection = str(r.get("reflection") or "")
 
     # the snowball: feelings nudge preferences, preferences shape future choices

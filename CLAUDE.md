@@ -67,6 +67,8 @@ next to the code and are git-ignored.
   wake/sleep changes at his place in the diary ("👀 Bolt sees: …") and his memories. His replies get plain facts
   about creatures the talk touches (`fellow_facts`: by name, their human's name, or clues like "your friend" /
   "the jay"), from `FELLOWS` and `s["fellows"]` (last seen, last 3 talks). Facts only, never how to feel.
+  With an awake creature at his place he can `talk_to` it on his turn (one model call, sent as a town `say`;
+  the town's talk limits apply). Outcomes that never happened (`didnt_happen`) can't score above 0.
 - **Remembering his past in replies:** `remember_past` searches his whole memory book by the rarest shared
   words (stemmed); up to 3 moments when he's asked about his past, at most 1 strong match otherwise, never talk
   from the last 2 hours. His fishing records are always in reply prompts.

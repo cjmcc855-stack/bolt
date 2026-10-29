@@ -10,6 +10,8 @@ town_test.py - checks the plumbing Bolt needs for the shared town (shasta-world)
   - he notices who's with him (diary + memory), his replies know it, and he's told when a creature parrots him
   - "your friend" / "the jay" / "Elliott's guy" bring up who Spike is and what they last said to each other
   - names are never banned as crutch words
+  - he can start a conversation with an awake creature here (talk_to -> a town 'say'); 'go Spike' is answered
+    plainly; something that didn't happen can't feel like a win; stray Chinese leaves song titles
 
     python tests/town_test.py [path/to/bolt_folder]
 
@@ -50,7 +52,9 @@ def brain(prompt, json_mode=True, temp=0.9, **kw):
             raise ConnectionError("brain hiccup (test)")
         return json.dumps({"thought": "hm", "action": PLAN["action"], "target": PLAN["target"]})
     if "How did it honestly make you feel" in prompt:
-        return json.dumps({"feeling": 0, "reflection": "fine"})
+        return json.dumps({"feeling": PLAN.get("feel", 0), "reflection": "fine"})
+    if "You start talking to" in prompt:
+        return "Found a beetle under the old tire. Want half?"
     return "{}"
 
 
@@ -333,6 +337,49 @@ check('Spike said "found a beetle" and you said "Nice, where?"' in reply_prompt(
       "talks from before he kept them come from his memories")
 s["convo"] = [{"who": "Spike", "said": "x", "reply": f"Spike, the glints again {i}"} for i in range(4)]
 check("spike" not in c.overused_words(s) and "glints" in c.overused_words(s), "names are never banned as crutch words")
+
+print("12. he can start a conversation with a creature that's here")
+c.TOWN = CompanyTown()
+s["location"], s["energy"], s["outbox"] = "junkyard", 80, []
+WITH["here"] = [{"name": "Spike", "state": "awake", "doing": None, "id": "spike"}]
+PLAN.update(action="talk_to", target="Spike")
+PROMPTS.clear()
+s = c.run_tick(s)
+decision = next((p for p in PROMPTS if '"action"' in p), "")
+check("talk_to (target = Spike, here with you" in decision, "with Spike awake here, talking to him is one of his options")
+says = [e["body"] for e in saved_outbox() if e["body"]["action"] == "say"]
+check(says and says[-1]["to"] == "spike" and says[-1]["text"] == "Found a beetle under the old tire. Want half?",
+      "what he says goes to Spike through the town")
+check('said to Spike: "Found a beetle' in s["memories"][-1]["text"], "and it's his turn, in his memory")
+check(s["fellows"]["Spike"]["lately"][-1]["me"].startswith("Found a beetle"), "kept with what he knows about Spike")
+check('you said to Spike: "Found a beetle' in c.fellow_facts(s, [("Caelan", "how's your buddy?")], {}, []),
+      "and shown as a talk he started")
+WITH["here"] = [{"name": "Spike", "state": "asleep", "doing": None, "id": "spike"}]
+PLAN["feel"], s["outbox"] = 2, []
+PROMPTS.clear()
+s = c.run_tick(s)
+check("talk_to (target" not in next((p for p in PROMPTS if '"action"' in p), ""), "Spike asleep: no talk_to on offer")
+check("Spike is asleep, so you let them be" in s["memories"][-1]["text"] and not saved_outbox(),
+      "if he tries anyway, he lets Spike sleep and nothing is sent")
+check(s["memories"][-1]["feeling"] <= 0, "and something that didn't happen can't feel like a win")
+PLAN["feel"] = 0
+WITH["here"] = [{"name": "Spike", "state": "awake", "doing": None, "id": "spike"}]
+check("right here with you" in c.execute("go", "Spike", s, ""), "'go Spike' with Spike here: he's told Spike is right here")
+WITH["here"] = []
+c.notice_company(s)
+out = c.execute("go", "spike", s, "")
+check(out.startswith("went looking for Spike, but Spike isn't here (you last saw Spike at the junkyard"),
+      "'go Spike' without him: told so, and where he last saw him")
+check(c.resolve_place("Spike's fir") == "fir" and c.resolve_place("firewood pile") != "fir", "'Spike's fir' names the fir")
+check("isn't here" not in c.execute("go", "Spike's fir", s, ""), "'go to Spike's fir' is still a place")
+check(c.execute("talk_to", "Spike", s, "") == "wanted to talk to someone, but nobody else is here", "nobody here: nobody to talk to")
+c.TOWN = c.LocalTown()
+
+print("13. song titles keep his own words, not the model's stray Chinese")
+check(c.plain_title(s, "Eternal涟漪", "lake") == "Eternal", "stray characters dropped")
+check(c.plain_title(s, "涟漪", "lake") == "lake", "nothing left: the subject instead")
+s["words"].append("さくら")
+check(c.plain_title(s, "Spring さくら", "lake") == "Spring さくら", "a word he picked up stays")
 
 os.chdir("/")
 shutil.rmtree(WORK, ignore_errors=True)
