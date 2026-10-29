@@ -236,6 +236,15 @@ for n in range(1, args.ticks + 1):
     elif r < 0.125:
         c.inbox(c.BOOK_REQUESTS, "a fake book")
         c.process_book_requests()
+    if hasattr(c, "reply_now") and c.has_talk():         # like the real loop: answer first, then the turn
+        try:
+            s = c.run_step(c.reply_now, s)
+            STATS["quick replies"] += 1
+        except Exception as e:
+            STATS[f"quick reply fail: {type(e).__name__}"] += 1
+            if not isinstance(e, (OSError, ConnectionError)) and type(e).__name__ not in UNEXPECTED:
+                import traceback
+                UNEXPECTED[type(e).__name__] = traceback.format_exc().strip().splitlines()[-3:]
     try:
         s = c.run_tick(s)
         failures = 0
