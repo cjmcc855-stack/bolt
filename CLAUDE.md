@@ -63,6 +63,10 @@ next to the code and are git-ignored.
 - **Plain talk:** flowery replies get one plain rewrite (`too_purple`, `plainer`).
 - **Songs:** make_music saves its recipe in `tunes/`, synth patches in `patches/`. The newest 40 songs stay
   as audio; older ones are rebuilt byte-identical when played (`render_song`, `prune_songs`).
+- **Who's around:** after each look at the shared town, `notice_company` notes arrivals, departures and
+  wake/sleep changes at his place in the diary ("👀 Bolt sees: …") and his memories. His replies get plain facts
+  about creatures the talk touches (`fellow_facts`: by name, their human's name, or clues like "your friend" /
+  "the jay"), from `FELLOWS` and `s["fellows"]` (last seen, last 3 talks). Facts only, never how to feel.
 - **Creatures on Discord:** `CreatureGuard` (30 s bursts, 8-exchange streak then a 30-minute break, 60 a day,
   3 gifts a day). Creatures can never run owner commands. `creatures.json` maps bot names to creature names.
 - **Test gotchas:** fake brains must accept `**kw`; tests that use the real clock set `c.is_night = lambda:

@@ -2497,23 +2497,22 @@ def notice_company(s):
     """Who else is at his place in the shared town. Whenever that changes (someone shows up, leaves, wakes up or
     falls asleep) he notices: a line in his diary and a memory, so the turns and replies after it know who he's
     been around. Runs right after he looks at the town."""
-    here = TOWN.here(s["location"])
+    loc = s["location"]
+    here = TOWN.here(loc)
     if here is None:
         return
-    ws, loc = s.setdefault("world", {}), s["location"]
+    ws, nice = s.setdefault("world", {}), loc.replace("_", " ")
     now_with = {c["name"]: c["state"] for c in here}
     before = ws.get("with", {}) if ws.get("with_at") == loc else {}
-    nice = loc.replace("_", " ")
     seen = []
     for c in here:
         if c["name"] not in before:
             seen.append(f"{c['name']} is here at the {nice}, {looks(c)}")
         elif before[c["name"]] != c["state"]:
             seen.append(f"{c['name']} {NOW_STATE.get(c['state'], 'is ' + c['state'])}")
+        s.setdefault("fellows", {}).setdefault(c["name"], {}).update(seen=now(), seen_at=loc)
     seen += [f"{who} left the {nice}" for who in before if who not in now_with]
     ws["with"], ws["with_at"] = now_with, loc
-    for c in here:
-        s.setdefault("fellows", {}).setdefault(c["name"], {}).update(seen=now(), seen_at=loc)
     if seen:
         text = "; ".join(seen)
         diary(f"**{now()}** 👀 {NAME} sees: {text}.\n")
@@ -2563,13 +2562,13 @@ def fellow_facts(s, heard, creatures, here):
     at, by name, by its human's name, or by a clue like "your friend" or "the jay". Facts only, so he knows who's
     who without anyone having to spell it out."""
     msgs = " ".join(m for _, m in heard)
-    here_names = {c["name"] for c in here or []}
+    here_names, kin = {c["name"] for c in here or []}, bool(KIN.search(msgs))
     known = list(dict.fromkeys(list(FELLOWS) + list(s.get("fellows", {})) + list(creatures)))
     lines = []
     for name in known:
         f, met = FELLOWS.get(name, {}), s.get("fellows", {}).get(name, {})
         owner = f.get("owner")
-        if not (name in creatures or name in here_names or KIN.search(msgs)
+        if not (name in creatures or name in here_names or kin
                 or re.search(rf"\b{re.escape(name)}\b", msgs, re.I)
                 or (owner and re.search(rf"\b{re.escape(owner)}'?s\b", msgs, re.I))):
             continue
@@ -2586,7 +2585,8 @@ def fellow_facts(s, heard, creatures, here):
         lines.append("- " + ". ".join(b[:1].upper() + b[1:] for b in bits) + ".")
         if lately and name not in creatures:                 # talking to him, the past conversations already show it
             lines += [f"  {when_said(t['when'])}{' at the ' + t['where'].replace('_', ' ') if t.get('where') else ''}, "
-                      f"{name} said \"{t['they']}\" and you said \"{t['me']}\"" for t in lately[-2:]]
+                      f"{name} said \"{t['they']}\" and " + (f"you said \"{t['me']}\"" if t["me"] else "you didn't answer")
+                      for t in lately[-2:]]
     return ("Other creatures you know (creatures like you, not you and not human; bring one up only if this is "
             "about them):\n" + "\n".join(lines) + "\n") if lines else ""
 
@@ -2732,10 +2732,10 @@ def reply_now(s):
     loc = s["location"]
     TOWN.look(s)
     notice_company(s)
-    coming =[l for l in peek_lines(OFFERINGS)]            # a gift being handed over right now
+    coming = [l for l in peek_lines(OFFERINGS)]            # a gift being handed over right now
     reply = compose_reply(s, heard, creatures, loc, TOWN.event(loc), coming, [])
     remember_talk(s, heard, creatures, reply, loc)
-    said ="; ".join(f'{w} says "{m}"' for w, m in heard)
+    said = "; ".join(f'{w} says "{m}"' for w, m in heard)
     s["convo"] = (s.get("convo", []) + [{"who": w, "said": m, "reply": ""} for w, m in heard[:-1]]
                   + [{"who": heard[-1][0], "said": heard[-1][1], "reply": reply}])[-12:]
     s["to_learn"] = s.get("to_learn", []) + [list(h) for h in heard]

@@ -7,6 +7,9 @@ town_test.py - checks the plumbing Bolt needs for the shared town (shasta-world)
   - a give/drop/take with no answer is resent with the same id; other actions are let go
   - after a restart only give/drop/take are resent; a failed turn sends nothing
   - a retried turn uses new ids
+  - he notices who's with him (diary + memory), his replies know it, and he's told when a creature parrots him
+  - "your friend" / "the jay" / "Elliott's guy" bring up who Spike is and what they last said to each other
+  - names are never banned as crutch words
 
     python tests/town_test.py [path/to/bolt_folder]
 
