@@ -11,7 +11,7 @@ Test:   python tests/sim_days.py .      days of fake life with a chaotic brain; 
         python tests/creature_loop_test.py   a badly behaved bot vs. his Discord loop protection
         python tests/reply_test.py      quick replies (answers first, then his turn)
         python tests/town_test.py       shared-town plumbing (save first, then send; unknown places)
-        python tests/habits_test.py     plain talk, ruts, song storage
+        python tests/habits_test.py     plain talk, ruts, roosting, song storage
 Reset:  delete state.json, hoard.json and memory_book.jsonl to hatch a brand new crow
 
 MAP OF THIS FILE (search for the "# ----" headers)
@@ -2395,6 +2395,8 @@ def reply_now(s):
     heard += list(creatures.items())
     if not heard:
         return
+    if humans:
+        s["human_at"] = time.time()                        # at night, he stays up a while for them
     if s.get("asleep_until"):
         if not humans:                                     # creatures can't wake him: let it go
             save_state(s)
@@ -2426,6 +2428,32 @@ def reply_now(s):
         pass
 
 
+ROOST_AFTER_VISIT = 1200     # a human who wakes him at night gets his company until 20 minutes after they go quiet
+
+
+def roost(s):
+    """Crows roost at night (NIGHT): he flies home if he has the energy and sleeps until morning, with no model
+    calls, so the GPU rests too. A human can still wake him; other creatures can't."""
+    frm = s["location"]
+    if frm != "nest" and s["energy"] >= 15:
+        execute("go", "nest", s, "")
+    outcome = execute("sleep", "", s, "")
+    home = s["location"] == "nest"
+    if home:
+        text = (f"It got late, so I flew home from the {frm.replace('_', ' ')} and tucked into the nest for the night"
+                if frm != "nest" else "It got late, so I tucked into the nest for the night")
+        seen = (f"flies home from the {frm.replace('_', ' ')} and tucks into the nest" if frm != "nest"
+                else "tucks into the nest")
+    else:
+        text, seen = f"It got late and I was too worn out to fly home, so I {outcome}", f"is too worn out to fly home, so he {outcome}"
+    TOWN.after_turn(s, "sleep", "", outcome)
+    s["memories"] = (s["memories"] + [{"tick": s["tick"], "when": now(), "feeling": 0, "text": text + "."}])[-60:]
+    diary(f"**{now()}** 🌙 It's late. {NAME} {seen}. Energy {s['energy']}.\n")
+    AWAKE.clear()
+    save_state(s)
+    clear_pending()
+
+
 def tick(s):
     if s.get("asleep_until"):
         AWAKE.clear()
@@ -2446,6 +2474,7 @@ def tick(s):
     for line in take_lines(TALK):
         who, _, msg = line.partition("|")
         heard.append((who.strip(), msg.strip()) if msg else (HUMAN, line))
+    humans = bool(heard)
     creatures = TOWN.creature_talk()                       # other creatures: newest line from each, at most
     heard += list(creatures.items())
     said = "; ".join(f'{w} says "{m}"' for w, m in heard)
@@ -2455,6 +2484,10 @@ def tick(s):
         who, _, place = line.partition("|")
         if place in PLACES:
             calls.append((who or HUMAN, place))
+    if humans or gifts or calls:
+        s["human_at"] = time.time()
+    elif is_night() and time.time() - s.get("human_at", 0) > ROOST_AFTER_VISIT:
+        return roost(s)                                     # bedtime: no thinking until morning
     call_note = ""
     for who, place in calls[-1:]:                           # someone called him over: he comes, unless he's spent
         nice = place.replace("_", " ")

@@ -4,6 +4,7 @@ habits_test.py - checks three of Bolt's habits:
 
   - flowery postcard replies get one plain rewrite in his own voice (plain ones are left alone)
   - ruts: getting fed up with something sinks in every time, and he's told plainly when a streak feels bad
+  - roosting: at night he flies home and sleeps, with no model calls, until a human wakes him
   - songs: only the newest are kept as audio; older ones play back byte-identical from their recipes,
     and his early songs (no recipe) are never touched
 
@@ -26,6 +27,7 @@ c = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(c)
 c.DISCORD = {}
 c.real_weather = lambda: {"kind": "clear", "temp_f": 50, "wind_mph": 3, "real": False}
+c.is_night = lambda: False                          # daytime, except section 3
 POSTS, PROMPTS = [], []
 c.discord_post = lambda text, file=None: POSTS.append(text)
 PROBLEMS = []
@@ -107,7 +109,43 @@ check(s["recent_feelings"][-1] == 0 and len(s["recent_feelings"]) == 5, "each tu
 src = open("creature.py", encoding="utf-8").read()
 check("weight = novelty if feeling > 0 else 1" in src, "bad feelings aren't watered down by repetition")
 
-print("3. songs")
+print("3. roosting")
+c.is_night = lambda: True
+s["location"], s["energy"], s["asleep_until"] = "creek", 60, 0
+s.pop("human_at", None)
+PROMPTS.clear()
+s = c.run_tick(s)
+check(not PROMPTS, "at night his turn makes no model calls")
+check(s["location"] == "nest" and s["asleep_until"] > c.time.time() + 3000, "he flies home and goes to sleep")
+check("roosted" in s["memories"][-1]["text"] or "tucked into the nest" in s["memories"][-1]["text"], "and remembers going to bed")
+for _ in range(5):
+    s = c.run_tick(s)
+check(not PROMPTS and s["asleep_until"], "he sleeps through the night without thinking")
+c.inbox(c.CREATURE_TALK, "Spike|Bolt! you up?")
+s = c.run_step(c.reply_now, s)
+check(s["asleep_until"] and not PROMPTS, "another creature can't wake him")
+SAY["reply"] = "Kraa. Up now. What's up?"
+c.inbox(c.TALK, "Caelan|you awake?")
+s = c.run_step(c.reply_now, s)
+check(not s["asleep_until"] and any("Up now" in p for p in POSTS), "a human can, and he answers")
+PROMPTS.clear()
+s = c.run_tick(s)
+check(any('"action"' in p for p in PROMPTS) and not s["asleep_until"], "and he stays up while they're around")
+s["human_at"] -= c.ROOST_AFTER_VISIT + 1
+PROMPTS.clear()
+s = c.run_tick(s)
+check(not PROMPTS and s["asleep_until"], "20 minutes after they go quiet, he roosts again")
+s["location"], s["energy"], s["asleep_until"] = "summit", 8, 0
+s.pop("human_at", None)
+s = c.run_tick(s)
+check(s["location"] == "summit" and s["asleep_until"], "too worn out to fly home: he sleeps where he is")
+c.is_night = lambda: False
+s["asleep_until"] = 1
+PROMPTS.clear()
+s = c.run_tick(s)
+check(any('"action"' in p for p in PROMPTS), "morning: he wakes and lives his day")
+
+print("4. songs")
 os.makedirs("songs", exist_ok=True)
 with open("songs/00001_an_early_song.wav", "wb") as f:      # one of his first songs: audio only, no recipe
     f.write(b"RIFF....early")

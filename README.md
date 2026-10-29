@@ -47,7 +47,7 @@ Running your own creature from this code: change `NAME` and `HUMAN` at the top o
 ## Safety and robustness
 - GPU watchdog: pauses at 80°C, emergency shutdown at 87°C (model unloaded, lock left so he won't restart until it cools).
 - Every tick is all-or-nothing; saves are atomic with backups; one instance at a time.
-- `tests/sim_days.py` runs days of his life in seconds with a chaotic fake brain, crashes, power cuts and outages, and checks that nothing breaks (any real crash counts as a failure). `tests/creature_loop_test.py` checks the Discord loop protection, `tests/reply_test.py` checks quick replies, `tests/town_test.py` checks the shared-town plumbing (save first, then send; places his own town doesn't have), and `tests/habits_test.py` checks plain talk, ruts and song storage. `!restart` runs all five first and refuses to restart into broken code:
+- `tests/sim_days.py` runs days of his life in seconds with a chaotic fake brain, crashes, power cuts and outages, and checks that nothing breaks (any real crash counts as a failure). `tests/creature_loop_test.py` checks the Discord loop protection, `tests/reply_test.py` checks quick replies, `tests/town_test.py` checks the shared-town plumbing (save first, then send; places his own town doesn't have), and `tests/habits_test.py` checks plain talk, ruts, roosting and song storage. `!restart` runs all five first and refuses to restart into broken code:
 ```
 python tests/sim_days.py .
 python tests/creature_loop_test.py

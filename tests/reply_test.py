@@ -21,6 +21,7 @@ c = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(c)
 c.DISCORD = {}
 c.real_weather = lambda: {"kind": "clear", "temp_f": 50, "wind_mph": 3, "real": False}
+c.is_night = lambda: False                          # these checks are about daytime (roosting: habits_test)
 PROBLEMS, PROMPTS, POSTS = [], [], []
 
 
