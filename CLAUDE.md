@@ -38,6 +38,7 @@ next to the code and are git-ignored.
   python tests/reply_test.py            # quick replies
   python tests/town_test.py             # shared-town plumbing with fake towns
   python tests/habits_test.py           # plain talk, ruts, roosting, song storage
+  python tests/blueprint_test.py        # blueprints: study, junkyard parts, build, what machines change
   python tests/world_test.py ..\shasta-world   # his real code against the real server (needs a shasta-world checkout)
   ```
 - **Refactors must not change behavior.** Prove it: run the previous commit and the new code through
@@ -61,6 +62,14 @@ next to the code and are git-ignored.
 - **Night:** 22:00 to 06:00 he roosts (`roost`): flies home, sleeps, no model calls. A human can wake him and
   he stays up until 20 minutes after they go quiet; creatures can't wake him.
 - **Plain talk:** flowery replies get one plain rewrite (`too_purple`, `plainer`).
+- **Blueprints (a long puzzle):** Caelan hid 12 "For Bolt: blueprint of …" gifts around town (`BLUEPRINTS`).
+  `examine` on one works out one part per look (`study_blueprint`, progress in `s["blueprints"]`). Scavenging at
+  the junkyard turns up only parts he's worked out (`junk_part`). `build` (`do_build`) needs the whole drawing
+  understood, every part owned and examined/read about (`item_knows`), the machines that go inside it, the
+  tinkering level, and being at its place; it uses up the parts, never the blueprint. Machines live in
+  `s["built"]` (an installed one has `"in"`) and change things: travel, naps, trains, sky events, skill levels.
+  The go-kart needs no blueprint: reading about go-karts anywhere (`kart_idea`) teaches him what it takes. The
+  hint is in `library/The_Tinkerers_Handbook.txt`. Random tinkering never grabs a machine part.
 - **Songs:** make_music saves its recipe in `tunes/`, synth patches in `patches/`. The newest 40 songs stay
   as audio; older ones are rebuilt byte-identical when played (`render_song`, `prune_songs`).
 - **Who's around:** after each look at the shared town, `notice_company` notes arrivals, departures and

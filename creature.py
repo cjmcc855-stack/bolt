@@ -148,7 +148,7 @@ FINDS = {
 FIND_ADJ = ["chrome", "rusty", "bent", "blue", "tiny", "shiny", "cracked", "brass", "red", "greasy"]
 ACTIONS = ["go", "scavenge", "draw", "make_music", "watch", "nap", "sleep", "rearrange_collection", "think",
            "read", "look_up", "fish", "sift", "dig", "tinker", "penny_on_tracks", "reminisce", "forage",
-           "take_apart", "examine", "play_synth", "talk_to"]
+           "take_apart", "examine", "play_synth", "talk_to", "build"]
 LIBRARY = "library"            # drop plain-text books (.txt) in here
 PREF_DECAY = 0.985             # every tick, all preferences fade a little toward zero
 NIGHT = (22, 6)                # crows roost from 10pm to 6am
@@ -1287,7 +1287,7 @@ def topics_for(action, place=None):
 def know_levels(s, action):
     """Studying counts like practice: every 5 notes on a subject = 1 bonus skill level for it, up to 3."""
     notes = sum(len(s["notebooks"].get(t, [])) for t in topics_for(action))
-    return min(3, notes // 5)
+    return min(3, notes // 5) + (2 if working(s, SKILL_MACHINES.get(action)) else 0)   # a machine he built helps too
 
 
 def recall(s, action, text, n=3):
@@ -1332,7 +1332,7 @@ def learn(s, kind, source, text):
     out = str(r.get("reaction") or "").strip()
     if words:
         out += f" (new favorite words: {', '.join(words)})"
-    return out + revise_beliefs(s, source, text)
+    return out + revise_beliefs(s, source, text) + kart_idea(s, text)
 
 
 def revise_beliefs(s, source, text):
@@ -1621,7 +1621,7 @@ def do_activity(action, target, s):
     if action == "penny_on_tracks":
         hit = match_items(s, target, 1, allow_gifts=False)
         item = hit[0] if hit else "bottle cap"
-        if random.random() < 0.5:
+        if random.random() < 0.5 and not working(s, "valve"):
             return f"left a {item} on the rail and waited, but no train came. Took it back"
         flat = "flattened " + re.sub(r"^(a |an |flattened )", "", base_name(item))
         if hit:
@@ -1650,7 +1650,8 @@ def do_activity(action, target, s):
     if action == "tinker":
         parts = match_items(s, target, 2)
         if len(parts) < 2:
-            pool = [c for c, v in hoard()["items"].items() if not v["gift"]]
+            parts_wanted = {p for b in BLUEPRINTS.values() for p in b[3]}     # never grabs a machine part at random
+            pool = [c for c, v in hoard()["items"].items() if not v["gift"] and bare(c).lower() not in parts_wanted]
             if len(pool) < 2:
                 return "wanted to tinker but doesn't have enough junk to build with"
             parts = random.sample(pool, 2)
@@ -1858,11 +1859,205 @@ def shelf_knowledge(s, n=5):
     return out
 
 
+# ---------------- BLUEPRINTS (a long puzzle: study, find the parts, understand them, build) ----------------
+# Caelan hid a dozen blueprints around town. Studying one (examine) works out, one at a time, each part it calls
+# for and any machine it needs inside it, then how it all goes together. Every part is out in the junkyard, but he
+# only finds the ones he knows he's looking for. To build: understand the blueprint, have every part, know something
+# about each part (from examining it or reading), have built what it needs, enough tinkering, and be at its spot.
+# The Tinkerer's Handbook has a section on this. The blueprint itself is a gift: it's never used up.
+BLUEPRINTS = {   # key: (words in the blueprint's name, what it is, built at, parts, machines it needs, tinkering level)
+    "v8":        ("twin-turbo v8", "twin-turbo V8", "junkyard",
+                  ["engine block", "pair of turbochargers", "set of fuel injectors"], [], 3),
+    "valve":     ("valve gear", "locomotive valve gear", "rail_yard",
+                  ["drive rod", "eccentric crank", "brass valve block"], [], 2),
+    "wheel":     ("water wheel", "water wheel forge", "creek", ["paddle wheel", "axle and bearings", "bellows"], [], 3),
+    "camshaft":  ("camshaft", "hand-cut camshaft", "machine_shop",
+                  ["steel bar stock", "set of lifters", "cam lobe template"], [], 3),
+    "bigblock":  ("440 big block", "440 big block", "garage",
+                  ["big-block engine case", "set of pistons", "timing chain"], ["camshaft"], 4),
+    "turbine":   ("wind turbine", "rooftop wind turbine", "diner_roof", ["fan blades", "car alternator", "steel pole"], [], 2),
+    "jaws":      ("jaws of life", "Jaws of Life spreader", "ambulance_station",
+                  ["hydraulic cylinder", "pair of steel spreader arms", "hydraulic pump"], [], 3),
+    "gearbox":   ("sequential gearbox", "sequential gearbox", "drift_lot",
+                  ["gearbox case", "set of dog-ring gears", "shift drum"], [], 4),
+    "welder":    ("mig welder", "crow-sized MIG welder", "shed",
+                  ["welding transformer", "spool of welding wire", "welding torch"], [], 2),
+    "cablecar":  ("cable car", "cable car", "mountain_trail",
+                  ["coil of steel cable", "gondola cabin", "big pulley wheel"], ["v8"], 5),
+    "hotrod":    ("hot rod", "hot rod", "old_barn",
+                  ["pair of ladder frame rails", "set of wheels and tires", "steering box"], ["bigblock", "gearbox"], 6),
+    "telescope": ("radio telescope", "radio telescope", "summit",
+                  ["satellite dish", "radio receiver", "length of coax cable"], ["turbine"], 4),
+    "gokart":    ("go-kart", "go-kart", "junkyard",       # no blueprint: he works it out from reading about one
+                  ["lawnmower engine", "length of steel tubing", "set of small wheels", "steering wheel"], [], 2),
+}
+IN_HEAD = {"gokart"}   # plans he can know without a blueprint
+KART = re.compile(r"\bgo[- ]?karts?\b", re.I)
+MACHINE_DOES = {   # what a finished machine changes in his life
+    "valve": "a train always comes when you leave something on the rail",
+    "wheel": "its forge makes you better at sifting the creek gravel",
+    "turbine": "it warms the diner roof vent, so naps there restore a lot more",
+    "jaws": "you can pry open the crunched cars, so scavenging goes a lot better",
+    "welder": "you can weld now, so your tinkering holds together much better",
+    "cablecar": "it carries you between the mountain trail and the summit for almost no energy",
+    "hotrod": "you drive it anywhere in town (not up the mountain) for almost no energy",
+    "gokart": "you drive it around town (not up the mountain) for less energy than flying",
+    "telescope": "at the summit you can listen to the sky",
+    "v8": "it's an engine: something bigger could run on it",
+    "camshaft": "it's the heart of an engine: something bigger needs it",
+    "bigblock": "it's an engine: something bigger could run on it",
+    "gearbox": "it's a gearbox: something bigger needs it",
+}
+SKY_EVENTS = ["the radio telescope picks up a pulsar ticking like a clock", "the dish hums with the hiss of the Milky Way",
+              "a satellite's beep crosses the sky through the receiver", "the sun crackles loud in the radio telescope"]
+SKILL_MACHINES = {"tinker": "welder", "sift": "wheel", "scavenge": "jaws"}   # +2 levels once built
+
+
+def built(s, key):
+    return key in s.get("built", {})
+
+
+def working(s, key):
+    """Built and standing on its own (not installed inside a bigger machine)."""
+    return built(s, key) and not s["built"][key].get("in")
+
+
+def my_plans(s):
+    """The machines he has plans for: his blueprints from Caelan, plus anything he's worked out in his head."""
+    mine = [k for k in dict.fromkeys(blueprint_of(i) for i in hoard()["items"]) if k]
+    return mine + [k for k in IN_HEAD if s.get("blueprints", {}).get(k)]
+
+
+def kart_idea(s, text):
+    """Reading about go-karts is enough to know what one takes."""
+    if not KART.search(text or "") or s.get("blueprints", {}).get("gokart"):
+        return ""
+    s.setdefault("blueprints", {})["gokart"] = {"learned": len(blueprint_steps("gokart"))}
+    return (f" (You worked out what a go-kart takes: {', '.join(BLUEPRINTS['gokart'][3])}. "
+            "It doesn't need a blueprint, and it gets built at the junkyard.)")
+
+
+def junk_part(s):
+    """At the junkyard he can spot a part he knows he's looking for. Better odds with the Jaws of Life."""
+    want = needed_parts(s)
+    if s["location"] != "junkyard" or not want or random.random() > (0.55 if working(s, "jaws") else 0.4):
+        return ""
+    part = random.choice(want)
+    add_item(s, part)
+    return part
+
+
+def blueprint_of(item):
+    """The blueprint key, if this is one of Caelan's blueprints (a gift with 'blueprint' in its name)."""
+    low = item.lower()
+    if "blueprint" not in low or not is_gift(item):
+        return None
+    return next((k for k, b in BLUEPRINTS.items() if b[0] in low), None)
+
+
+def blueprint_steps(key):
+    """What studying it reveals, in order: each part, each machine it needs, then how it goes together."""
+    _, name, at, parts, needs, _ = BLUEPRINTS[key]
+    return ([f"calls for {a_an(p)}" for p in parts] + [f"needs a working {BLUEPRINTS[n][1]} built into it" for n in needs]
+            + [f"gets built at the {at.replace('_', ' ')}, and you understand how it all goes together"])
+
+
+def owns_part(part):
+    return next((k for k in hoard()["items"] if not is_gift(k) and bare(k).lower() == part), None)
+
+
+def needed_parts(s):
+    """Parts he's worked out a blueprint calls for and doesn't have yet (for blueprints not built)."""
+    out = []
+    for key, st in s.get("blueprints", {}).items():
+        if not built(s, key):
+            out += [p for p in BLUEPRINTS[key][3][:st.get("learned", 0)] if not owns_part(p) and p not in out]
+    return out
+
+
+def study_blueprint(s, item, key):
+    st = s.setdefault("blueprints", {}).setdefault(key, {"learned": 0})
+    steps, name = blueprint_steps(key), BLUEPRINTS[key][1]
+    if st["learned"] >= len(steps):
+        return f"looked over the blueprint of the {name} again, but you already understand it inside and out"
+    fact = steps[st["learned"]]
+    st["learned"] += 1
+    lore = s["item_lore"].setdefault(item_key(item), {"facts": [], "done": False})
+    lore["facts"].append(f"the {name} {fact}")
+    lore["done"] = st["learned"] >= len(steps)
+    s["energy"] = min(100, s["energy"] + 2)
+    return f"studied the blueprint of the {name} and worked out that it {fact}" + train(s, "tinkering", 1)
+
+
+def do_build(target, s):
+    """Builds the machine on one of his blueprints, if he's ready. Every 'not yet' says plainly what's missing."""
+    mine = my_plans(s)
+    t = str(target or "").lower().replace("go kart", "go-kart").replace("gokart", "go-kart")
+    key = next((k for k in mine if BLUEPRINTS[k][0] in t or BLUEPRINTS[k][1].lower() in t), None)
+    if not mine:
+        return "wanted to build something, but you don't have any blueprints or plans"
+    if not key:
+        return (f"wanted to build {target or 'something'}, but you don't have a plan for that "
+                f"(you have plans for: {', '.join(BLUEPRINTS[k][1] for k in mine)})")
+    _, name, at, parts, needs, level = BLUEPRINTS[key]
+    if built(s, key):
+        return f"thought about building the {name}, but you already built it"
+    if s.get("blueprints", {}).get(key, {}).get("learned", 0) < len(blueprint_steps(key)):
+        return f"wanted to build the {name}, but you don't understand its blueprint well enough yet"
+    if s["location"] != at:
+        return f"wanted to build the {name}, but it gets built at the {at.replace('_', ' ')}"
+    missing = [p for p in parts if not owns_part(p)]
+    if missing:
+        return f"wanted to build the {name}, but you're still missing: {', '.join(missing)}"
+    unknown = [p for p in parts if not item_knows(s, owns_part(p))]
+    if unknown:
+        return f"wanted to build the {name}, but you don't understand the {' or the '.join(unknown)} well enough yet"
+    unbuilt = [BLUEPRINTS[n][1] for n in needs if not working(s, n)]
+    if unbuilt:
+        return f"wanted to build the {name}, but it needs a working {' and a working '.join(unbuilt)} first"
+    if skill_level(s, "tinkering") + know_levels(s, "tinker") < level:
+        return (f"wanted to build the {name}, but your tinkering isn't up to it yet "
+                f"(level {skill_level(s, 'tinkering') + know_levels(s, 'tinker')} of {level})")
+    for p in parts:
+        take_item(s, owns_part(p))
+    for n in needs:
+        s["built"][n]["in"] = key                       # installed in this one
+    s.setdefault("built", {})[key] = {"when": now()}
+    s["energy"] -= 10
+    plan = "your own plan" if key in IN_HEAD else "Caelan's blueprint"
+    return f"built the {name} from {plan}! Now {MACHINE_DOES[key]}" + train(s, "tinkering", 4)
+
+
+def blueprint_note(s):
+    """For his decision prompt: plain facts about his plans and machines."""
+    lines, fresh = [], 0
+    for k in my_plans(s):
+        if built(s, k):
+            continue
+        st = s.get("blueprints", {}).get(k, {}).get("learned", 0)
+        if not st:
+            fresh += 1
+            continue
+        _, name, at, parts, needs, level = BLUEPRINTS[k]
+        known = parts[:st]
+        have = [p for p in known if owns_part(p)]
+        lines.append(f"{name} ({min(st, len(blueprint_steps(k)))} of {len(blueprint_steps(k))} things worked out; "
+                     f"calls for {', '.join(known)}; you have {', '.join(have) or 'none of them'})")
+    machines = [f"{BLUEPRINTS[k][1]} ({MACHINE_DOES[k]})" for k in s.get("built", {}) if working(s, k)]
+    if len(lines) > 3:                                     # keeps the prompt small: the newest three, and a count
+        lines = lines[-3:] + [f"{len(lines) - 3} more you've started on"]
+    return (("Machines you have plans for: " + "; ".join(lines) + (f"; and {fresh} blueprints you haven't studied yet" if fresh else "") + ".\n"
+             if lines or fresh else "")
+            + ("Machines you've built: " + "; ".join(machines) + ".\n" if machines else ""))
+
+
 def do_examine(target, s):
     hit = match_items(s, target, 1, allow_gifts=True) if target else []
     if not hit:
         return f"looked around for {target or 'something to study'} but couldn't find it in your collection"
     item = hit[0]
+    if blueprint_of(item):
+        return study_blueprint(s, item, blueprint_of(item))
     key, known = item_key(item), item_knows(s, item)
     lore = s["item_lore"].setdefault(key, {"facts": [], "done": False})
     if lore.get("done"):
@@ -2075,7 +2270,7 @@ def failed(outcome):
 def didnt_happen(outcome):
     """He only wanted to, or went looking and it wasn't there: the thing itself never happened."""
     return outcome.startswith(("wanted to ", "went looking for ", "looked around for ", "went to find ",
-                               "thought about taking apart ", "thought about talking to "))
+                               "thought about taking apart ", "thought about talking to ", "thought about building "))
 
 
 def stuck_note(s):
@@ -2224,7 +2419,7 @@ DOING = {"fish": "fishing", "sift": "sifting the gravel", "dig": "digging in the
          "make_music": "making up a song", "play_synth": "patching his synth", "read": "reading", "look_up": "reading",
          "watch": "watching", "nap": "napping", "examine": "studying his things", "reminisce": "remembering",
          "rearrange_collection": "fussing over his shelf", "penny_on_tracks": "putting a penny on the rails",
-         "think": "thinking", "talk_to": "chatting"}
+         "think": "thinking", "talk_to": "chatting", "build": "building"}
 
 
 class WorldTown(LocalTown):
@@ -2522,7 +2717,8 @@ def execute(action, target, s, event):
         no = TOWN.route_refusal(s, loc, target)
         if no:
             return no
-        if target == "summit" and s["energy"] < 40:
+        cable = working(s, "cablecar") and {loc, target} == {"mountain_trail", "summit"}
+        if target == "summit" and s["energy"] < 40 and not cable:
             return "tried to climb to the summit but was too tired and had to turn back"
         no = TOWN.closed_refusal(s, target)
         if no:
@@ -2533,11 +2729,21 @@ def execute(action, target, s, event):
             cost = 3                                     # gliding down the mountain is easy
         if target in ("summit", "mountain_trail") and (s.get("weather") == "snow" or season() == "winter"):
             cost += 8                                    # fighting through snow
+        ride = next((k for k in ("hotrod", "gokart") if working(s, k)), None)
+        if cable:
+            cost, how = 2, "rode the cable car"
+        elif ride and target in PLACES and not {loc, target} & {"mountain_trail", "summit"}:
+            cost, how = {"hotrod": 2, "gokart": 4}[ride], f"drove the {BLUEPRINTS[ride][1]}"
+        else:
+            how = "flew"
         s["location"] = target
         s["energy"] -= cost
-        return f"flew from {loc} to {target}"
+        return f"{how} from {loc} to {target}"
     if action == "scavenge":
         s["energy"] -= 5
+        part = junk_part(s)
+        if part:
+            return f"dug through the junkyard and found {a_an(part)}, one of the parts you've been looking for"
         if loc in FINDS and random.random() < 0.7 + 0.05 * know_levels(s, "scavenge"):
             item = random.choice(FINDS[loc])
             adj = random.choice(FIND_ADJ)
@@ -2561,9 +2767,12 @@ def execute(action, target, s, event):
         return do_synth(target or event, s)
     if action == "watch":
         s["energy"] = min(100, s["energy"] + 5)
+        if loc == "summit" and working(s, "telescope") and random.random() < 0.6:
+            event = random.choice(SKY_EVENTS)
         return f"sat and watched: {event}"
     if action == "nap":
-        s["energy"] = min(100, s["energy"] + (50 if loc == "nest" else 35))
+        warm = loc == "diner_roof" and working(s, "turbine")
+        s["energy"] = min(100, s["energy"] + (50 if loc == "nest" or warm else 35))
         return f"napped {'snug in your nest' if loc == 'nest' else 'at the ' + loc}"
     if action == "sleep":
         t = datetime.now()
@@ -2579,6 +2788,8 @@ def execute(action, target, s, event):
         return do_activity(action, target, s)
     if action == "examine":
         return do_examine(target, s)
+    if action == "build":
+        return do_build(target, s)
     if action == "reminisce":
         return do_reminisce(target, s)
     if action == "read":
@@ -3056,12 +3267,12 @@ Things you can do HERE at the {loc}: {", ".join(a[3] for a in ACTIVITIES.values(
 Where other activities are: {"; ".join(f"{k} at {'/'.join(v[0])}" for k, v in ACTIVITIES.items() if loc not in v[0])}
 Your skills: {", ".join(f"{k} level {skill_level(s, k)}" for k in s["skills"]) or "none yet"}
 {records_note(s) or "Your fishing records: none yet."}
-Actions: go (target = a place), scavenge, draw (target = subject), make_music (target = what it's about),
+{blueprint_note(s)}Actions: go (target = a place), scavenge, draw (target = subject), make_music (target = what it's about),
 watch, nap, sleep, rearrange_collection (target = treasures to admire; at your nest you can dig anything out of the hoard), think,
 read (target = a book), look_up (target = anything you're curious about, looked up in the big book of everything),
 reminisce (target = optional: a memory to look for; pages back through your memory book of your whole life since you hatched),
 examine (target = anything in your collection or hoard, to study it closely and figure out something new about it; things you understand completely don't need examining again),
-{"play_synth (target = what the patch is about; your modular synthesizer lives in your nest, so only there; synthesis level " + str(skill_level(s, "synthesis")) + "), " if has_synth() else ""}{talk_option}plus the activities above (only where they're available).
+{"play_synth (target = what the patch is about; your modular synthesizer lives in your nest, so only there; synthesis level " + str(skill_level(s, "synthesis")) + "), " if has_synth() else ""}{talk_option}{"build (target = a machine you have plans for), " if my_plans(s) else ""}plus the activities above (only where they're available).
 Do whatever YOU feel like. Respond ONLY with JSON:
 {{"thought": "one sentence, first person", "action": "...", "target": "..."}}"""
 

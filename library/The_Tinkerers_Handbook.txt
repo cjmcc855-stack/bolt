@@ -67,7 +67,7 @@ HOOK IT: bend a hook into wire so it can hang from something.
 
 BALANCE IT: some things don't need joining at all; they just need to sit in the right place. A mobile hangs from strings, perfectly balanced.
 
-WELD IT: humans melt metal together with hot sparks. A crow can't weld, but you can watch how they do it in the shed.
+WELD IT: humans melt metal together with hot sparks. A crow can't weld with a human's welder, but you can watch how they do it in the shed. A welder built small enough for a crow would be another story.
 
 A good joint is tight, simple, and holds when shaken. Test it: if it falls apart when you wiggle it, it would have fallen apart later anyway.
 
@@ -90,6 +90,20 @@ WATER CLOCK: a container with a tiny hole that drips at a steady pace. When it's
 LENS FIRE-STARTER (dangerous, for humans): a curved clear glass can focus sunlight hot enough to light dry grass. This is how magnifying glasses can start fires, which is why you never leave one in the sun near anything dry.
 
 SLING OR CATAPULT: a lever or a spring that stores energy and then flings something. It's a simple machine doing exactly what it was made for.
+
+GO-KART: the simplest car there is. A frame of steel tubing, four small wheels, a steering wheel, and a little engine like the one off a lawnmower. It needs no drawing. If you understand those parts, you can build one.
+
+----------------------------------------------------------------------
+
+BIG MACHINES AND BLUEPRINTS
+
+A blueprint is a drawing of a machine. You can't take it in all at once. Study it a piece at a time, and each look tells you one more part it calls for, until you see how the whole thing goes together.
+
+Almost every part a machine needs is sitting in a junkyard somewhere: engine blocks, cables, pumps, wheels. They're hard to spot in the piles until you know exactly what you're looking for. Study the drawing first, then go looking.
+
+Get to know each part before you build with it. Turn it over, look at it closely, read about it. A part you don't understand is a part you'll put in backwards.
+
+Build where the machine belongs, and build small things first. Big machines often need a smaller machine inside them: an engine before a car, a power source before something that runs on power.
 
 ----------------------------------------------------------------------
 
