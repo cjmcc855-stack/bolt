@@ -1424,8 +1424,6 @@ GEMS = {   # find: weight (rarer things get easier to find as the skill grows)
 }
 
 
-
-
 def skill_level(s, skill):
     return int((s["skills"].get(skill, 0) / 4) ** 0.5)
 

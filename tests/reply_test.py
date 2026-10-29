@@ -49,7 +49,6 @@ def brain(prompt, json_mode=True, temp=0.9, **kw):
 
 
 c.call_llm = brain
-real_diary_post = c.discord_post
 c.discord_post = lambda text, file=None: POSTS.append(text)
 
 s = c.load_state()
@@ -62,7 +61,6 @@ s = c.run_step(c.reply_now, s)
 check(any("**Bolt:** Kraa, the river's loud tonight." in p for p in POSTS), "the reply is posted by the quick step")
 check(not c.has_talk(), "the talk was used up")
 check(s["convo"][-1]["reply"] == "Kraa, the river's loud tonight.", "the conversation is remembered")
-n_posts = len(POSTS)
 PROMPTS.clear()
 s = c.run_tick(s)
 decision = next((p for p in PROMPTS if '"action"' in p), "")
