@@ -39,3 +39,6 @@ library/Steep_Trails.txt
 
 __pycache__/
 *.pyc
+
+# song recipes for make_music (synth recipes are in patches/)
+tunes/

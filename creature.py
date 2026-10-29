@@ -11,6 +11,7 @@ Test:   python tests/sim_days.py .      days of fake life with a chaotic brain; 
         python tests/creature_loop_test.py   a badly behaved bot vs. his Discord loop protection
         python tests/reply_test.py      quick replies (answers first, then his turn)
         python tests/town_test.py       shared-town plumbing (save first, then send; unknown places)
+        python tests/habits_test.py     plain talk, ruts, song storage
 Reset:  delete state.json, hoard.json and memory_book.jsonl to hatch a brand new crow
 
 MAP OF THIS FILE (search for the "# ----" headers)
@@ -19,7 +20,7 @@ MAP OF THIS FILE (search for the "# ----" headers)
   STORAGE ........... hoard + shelf, state, crash-safe saving, diary, inbox files
   BRAIN ............. talking to Ollama, prompt budget, cleaning up what the model says
   DISCORD ........... posting (queued) and listening
-  ACTIONS ........... drawing, music, books, Wikipedia, book fetching
+  ACTIONS ........... drawing, music (newest songs as audio, older ones from their recipes), books, Wikipedia
   NOTEBOOKS ......... what he's learned, by subject
   ACTIVITIES ........ fishing, sifting, digging, tinkering, foraging, pennies, skills
   MEMORY BOOK ....... his whole life, forever, and reminiscing
@@ -40,12 +41,12 @@ SAFETY RULES THE CODE KEEPS
   - Gifts are never dropped, used up, or double counted.
   - Messages wait in .pending files until the tick (or quick reply) that handles them is saved.
   - Anything for the town is saved before it's sent; gives, drops and takes are resent with the same id.
-  - !restart runs all four tests on the new code first and refuses to restart into broken code.
+  - !restart runs all five tests on the new code first and refuses to restart into broken code.
   - Restarts only ever happen when Caelan asks. The GPU watchdog shuts him down hard at GPU_KILL_TEMP.
   - Other creatures (bots listed in creatures.json) are heard under strict loop limits and can never run commands.
 """
 import json, os, random, re, socket, struct, subprocess, sys, threading, time, wave, urllib.parse, urllib.request
-import collections, copy
+import collections, copy, tempfile
 from datetime import datetime
 try:
     import synth                      # his modular synthesizer (synth.py, next to this file)
@@ -966,11 +967,78 @@ def do_music(subject, s):
     os.makedirs("songs", exist_ok=True)
     title = str(data.get("title") or subject)[:40]
     s["songs"] = (s["songs"] + [title])[-40:]
-    path = f"songs/{s['tick']:05d}_{re.sub(r'[^a-z0-9]+', '_', title.lower())}.wav"
+    stem = f"{s['tick']:05d}_{re.sub(r'[^a-z0-9]+', '_', title.lower())}"
+    path = f"songs/{stem}.wav"
     render_wav(notes, path, bpm=bpm)
     s["_file"] = path
     scale = str(data.get("scale") or "").strip()[:30]
+    os.makedirs(TUNES, exist_ok=True)                  # the recipe: tiny, and plays back exactly the same forever
+    with open(f"{TUNES}/{stem}.json", "w", encoding="utf-8") as f:
+        json.dump({"title": title, "scale": scale, "bpm": bpm, "notes": notes[:80], "song": f"{stem}.wav", "when": now()}, f)
     return f"made a song called '{title}'" + (f" in {scale}" if scale else "") + f" at {bpm} bpm ({path})" + train(s, "songwriting", 2)
+
+
+TUNES = "tunes"          # recipes for his make_music songs (synth songs keep theirs in patches/)
+KEEP_AUDIO = 40          # newest songs kept as audio files; older ones are played back from their recipes
+RENDER_LOCK = threading.Lock()
+
+
+def song_recipe(name):
+    """How to play a song back from what it was made from. None if there's no recipe (his early songs)."""
+    stem = os.path.splitext(os.path.basename(name))[0]
+    for folder in ("patches", TUNES):
+        try:
+            with open(os.path.join(folder, stem + ".json"), encoding="utf-8") as f:
+                r = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if r.get("song") == stem + ".wav":
+            return folder, r
+    return None
+
+
+def render_song(name):
+    """A song's audio, rebuilt from its recipe (exactly the same sound as when he first played it)."""
+    found = song_recipe(name)
+    if not found:
+        return None
+    folder, r = found
+    fd, tmp = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    try:
+        with RENDER_LOCK:
+            if folder == "patches":
+                synth.render(r, tmp, level=r.get("level", 10))
+            else:
+                render_wav(r["notes"], tmp, bpm=r["bpm"])
+        with open(tmp, "rb") as f:
+            return f.read()
+    finally:
+        os.remove(tmp)
+
+
+def song_names():
+    """Every song he's made that can still be played: audio files, plus older songs kept only as recipes."""
+    names = set(os.listdir("songs")) if os.path.isdir("songs") else set()
+    for folder in ("patches", TUNES):
+        if os.path.isdir(folder):
+            names |= {f[:-5] + ".wav" for f in os.listdir(folder) if f.endswith(".json")}
+    return sorted(n for n in names if n.endswith(".wav"))
+
+
+def prune_songs():
+    """Keeps the newest songs as audio files and lets older ones go back to just their recipe, so his songs don't
+    fill up OneDrive. Songs without a recipe (his early ones) are never touched."""
+    if not os.path.isdir("songs"):
+        return
+    wavs = sorted(f for f in os.listdir("songs") if f.endswith(".wav"))
+    for name in wavs[:-KEEP_AUDIO]:
+        found = song_recipe(name)
+        if found and (found[0] == TUNES or synth is not None):      # synth songs need the rack to play back
+            try:
+                os.remove(os.path.join("songs", name))
+            except OSError:
+                pass
 
 
 SYNTH_RE = re.compile(r"\bsynth(esi[sz]er)?s?\b|\bmodular\b|eurorack", re.I)
@@ -1047,9 +1115,10 @@ def do_synth(subject, s):
     os.makedirs("patches", exist_ok=True)
     stem = f"{s['tick']:05d}_{re.sub(r'[^a-z0-9]+', '_', raw['title'].lower()).strip('_') or 'patch'}"
     path = f"songs/{stem}.wav"
-    secs, played = synth.render(raw, path, level=lvl)
+    with RENDER_LOCK:                                 # the world page may be playing an old song back right now
+        secs, played = synth.render(raw, path, level=lvl)
+        heard = dict(synth.LAST_STATS)
     played.update(song=os.path.basename(path), when=now(), about=str(subject)[:120])
-    heard = dict(synth.LAST_STATS)
     played["heard"] = heard
     with open(f"patches/{stem}.json", "w", encoding="utf-8") as f:
         json.dump(played, f, indent=1)
@@ -1914,6 +1983,23 @@ def stuck_note(s):
     return f"You're stuck: your last {streak['n']} tries at {act.replace('_', ' ')} all failed in a row.{hint}"
 
 
+def rut_note(s):
+    """If he's done the same thing several turns running and it's felt bad, tell him plainly. What to do
+    instead is up to him."""
+    acts, feels = s["recent_actions"], s.get("recent_feelings", [])
+    if not acts:
+        return ""
+    n = 0
+    while n < len(acts) and acts[-1 - n] == acts[-1]:
+        n += 1
+    lately = feels[-min(n, len(feels)):] if feels else []
+    if n < 3 or len(lately) < 3 or sum(lately) >= 0:
+        return ""
+    how = "worse" if lately[-1] < 0 else "flat"
+    return (f"You've done {acts[-1].replace('_', ' ')} {n} turns in a row now, and lately it's felt {how} "
+            f"(feelings: {', '.join(f'{f:+d}' for f in lately[-5:])}). Doing it again probably won't feel any different.")
+
+
 def is_night():
     h = datetime.now().hour
     return h >= NIGHT[0] or h < NIGHT[1]
@@ -2236,7 +2322,44 @@ def compose_reply(s, heard, creatures, loc, event, gifts, ate):
         + f"Output only what {NAME} says, no quotes, no name label.", json_mode=False, temp=0.85,
         allow_foreign=bool(FOREIGN.search(msgs))).strip()
     reply = re.sub(rf"^\*?\*?{NAME}\*?\*?:\s*", "", reply).strip().strip('"').strip()
-    return reply
+    return plainer(s, reply)
+
+
+PURPLE = re.compile(r"\b(serene|magical|mystical|ethereal|enchant\w*|tranquil\w*|symphony|tapestry|ribbon|twinkl\w*|"
+                    r"danc(e|es|ing)|embrac\w*|majestic|breathtaking|captivating|mesmeriz\w*|shimmer\w*|glisten\w*|"
+                    r"sparkl\w*|gleam\w*|poetry|thing of beauty|sings? of|in metal|resonat\w*|"
+                    r"melod(y|ies) (of|waiting|as)|(a|the) note in|the mountain's (call|whispers?|serenity|secrets?|song)|"
+                    r"in my feathers|let (your|my) mind wander|a perfect (spot|place|addition))\b", re.I)
+SIMILE = re.compile(r"\b(like (a|an|the|my|your)|as \w+ as)\b", re.I)
+
+
+def too_purple(text):
+    """Postcard poetry instead of a bird talking: too long, too many sentences, or two or more of the chatbot's
+    fancy words and similes."""
+    sentences = len(re.findall(r"[.!?]+(?:\s|$)", text.strip()))
+    fancy = len(PURPLE.findall(text)) + len(SIMILE.findall(text))
+    return len(text) > 260 or (sentences > 3 and len(text) > 160) or fancy >= 2
+
+
+def plainer(s, text):
+    """The 14B model slides into flowery postcard talk however the prompt asks. When it does, he gets one go at
+    saying it again plainly, in his own voice. Failing that, he keeps his first three sentences."""
+    if not text or not too_purple(text):
+        return text
+    try:
+        out = call_llm(
+            f"You're {NAME}, a crow. You were about to say this, but it came out long and fancy, like a poem or a postcard:\n"
+            f"\"{text}\"\nHow you talk: {s.get('voice') or 'short, blunt, bird-brained'}\n"
+            "Say the same thing again the way you actually talk: 1 to 3 short sentences, everyday words, no poetry, "
+            "no describing things as magical or serene. Keep whatever answers what they said or asked. "
+            f"Output only what {NAME} says, no quotes, no name label.", json_mode=False, temp=0.7)
+        out = re.sub(rf"^\*?\*?{NAME}\*?\*?:\s*", "", str(out)).strip().strip('"').strip()
+    except Exception:
+        out = ""
+    if out and len(out) < len(text) and not out.lstrip().startswith(("{", "[")):
+        return out
+    first = re.findall(r"[^.!?]+[.!?]+", text)[:3]
+    return "".join(first).strip() or text
 
 
 def react_to_gifts(s, gifts, ate):
@@ -2257,7 +2380,7 @@ def react_to_gifts(s, gifts, ate):
         "talking to a friend, not a poem. "
         + (f"Don't use these overused words: {', '.join(crutch)}. " if crutch else "")
         + f"Output only what {NAME} says, no quotes, no name label.", json_mode=False, temp=0.8)
-    return clip(re.sub(rf"^\*?\*?{NAME}\*?\*?:\s*", "", out).strip().strip('"'), 300)
+    return clip(plainer(s, re.sub(rf"^\*?\*?{NAME}\*?\*?:\s*", "", out).strip().strip('"')), 300)
 
 
 def reply_now(s):
@@ -2396,6 +2519,7 @@ How you talk: {s.get('voice') or "Still figuring that out. Short, blunt, bird-br
 On your display shelf: {", ".join(s['collection']) or "empty"}
 {hoard_summary()}
 {stuck_note(s)}
+{rut_note(s)}
 {("What you've already figured out about your things (this knowledge is yours for good): " + " | ".join(shelf_knowledge(s))) if shelf_knowledge(s) else ""}
 {"You're exhausted and can barely keep your eyes open. You need to nap, sleep, or eat soon." if s['energy'] < 20
   else "You're getting tired. Climbing and digging cost a lot; napping, watching, reading, and eating restore you." if s['energy'] < 40 else ""}
@@ -2458,9 +2582,11 @@ Do whatever YOU feel like. Respond ONLY with JSON:
     # the snowball: feelings nudge preferences, preferences shape future choices
     for k in s["prefs"]:                                     # old feelings fade
         s["prefs"][k] = round(s["prefs"][k] * PREF_DECAY, 3)
-    novelty = 1 / (1 + repeats)                              # the 5th time in a row teaches less than the 1st
+    novelty = 1 / (1 + repeats)              # the 5th happy time in a row teaches less than the 1st...
+    weight = novelty if feeling > 0 else 1   # ...but getting fed up with something sinks in every time
     for key in (action, f"being at the {s['location']}"):
-        s["prefs"][key] = round(clamp(s["prefs"].get(key, 0) + 0.15 * feeling * novelty, -3, 3), 3)
+        s["prefs"][key] = round(clamp(s["prefs"].get(key, 0) + 0.15 * feeling * weight, -3, 3), 3)
+    s["recent_feelings"] = (s.get("recent_feelings", []) + [feeling])[-20:]
     s["mood"] = int(clamp(round(s["mood"] * 0.7 + feeling), -5, 5))
     convo = (f"{said} and I said \"{reply}\". ") if heard else ""
     gift_reaction = react_to_gifts(s, gifts, ate) if gifts else ""
@@ -2691,7 +2817,7 @@ def new_code_ok():
         discord_post(f"*🛠️ {msg}*")
         return False
     tests = [(t, extra) for t, extra in (("sim_days.py", ["--ticks", "150"]), ("creature_loop_test.py", []), ("reply_test.py", []),
-                                             ("town_test.py", []))
+                                             ("town_test.py", []), ("habits_test.py", []))
              if os.path.exists(os.path.join(os.path.dirname(SCRIPT), "tests", t))]
     if not tests:
         return True
@@ -2775,7 +2901,7 @@ class WorldHandler(BaseHTTPRequestHandler):
                                 placed.setdefault(pl, []).append(it)
             out["placed"] = {k: [i.rpartition("::")[2] for i in v] for k, v in placed.items()}
             out["name"], out["human"], out["places"] = NAME, HUMAN, PLACES
-            out["song_files"] = sorted(os.listdir("songs"))[-30:] if os.path.isdir("songs") else []
+            out["song_files"] = song_names()[-30:]
             out["drawing_files"] = sorted(os.listdir("drawings"))[-30:] if os.path.isdir("drawings") else []
             out["patch_files"] = sorted(os.listdir("patches"))[-40:] if os.path.isdir("patches") else []
             out["has_synth"] = any(v.get("gift") and SYNTH_RE.search(k) for k, v in out["hoard"].items())   # from the file: never touch his live hoard from here
@@ -2791,6 +2917,14 @@ class WorldHandler(BaseHTTPRequestHandler):
                 if os.path.isfile(fp):
                     with open(fp, "rb") as f:
                         return self._send(200, f.read(), ctype)
+                if folder == "songs" and name.endswith(".wav"):
+                    try:
+                        audio = render_song(name)          # an older song: play it from its recipe
+                    except Exception as e:
+                        print(f"[{now()}] couldn't play {name} back ({e})")
+                        audio = None
+                    if audio:
+                        return self._send(200, audio, ctype)
         self._send(404, "not found", "text/plain")
 
     def do_POST(self):
@@ -2911,6 +3045,7 @@ def main():
                         print(f"[{now()}] quick reply failed ({e}); answering in the turn instead")
                 s = run_tick(s)                # a tick that crashes halfway changes nothing
                 send_outbox(s)
+                prune_songs()
                 failures = 0
                 check_temp()                   # check again right after the heavy part
         except Exception as e:
