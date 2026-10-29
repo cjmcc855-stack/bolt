@@ -269,7 +269,7 @@ check(len(seen_lines()) == n + 1 and "Spike is awake now" in seen_lines()[-1], "
 PROMPTS.clear()
 reply = c.compose_reply(s, [("Spike", "Bolt")], {"Spike": "Bolt"}, "fir", "wind in the needles", [], [])
 check("with you right now: Spike (awake, painting)" in PROMPTS[0], "a reply knows who's there with him and what they're doing")
-check("Spike: a Steller's jay" in PROMPTS[0] and "here with you now" in PROMPTS[0], "and who Spike is")
+check("Spike: a Steller's jay" in PROMPTS[0] and "Here with you now" in PROMPTS[0], "and who Spike is")
 WITH["here"] = []
 s = c.run_tick(s)
 check("Spike left the fir" in seen_lines()[-1], "he notices Spike leaving")
@@ -306,21 +306,30 @@ def reply_prompt(who, said):
     return PROMPTS[0]
 
 
+c.remember_talk(s, [("Caelan", "hi"), ("Spike", "We mesh good.")], {"Spike": "We mesh good."}, "Yeah, we do.", "machine_shop")
+check(list(s["fellows"]) == ["Spike"], "only creatures' talk is kept with them")
 p = reply_prompt("Caelan", "Hey bolt! Do you like hanging out with your new friend?")
 check("Spike: a Steller's jay (dark blue and black, with a tall crest), Elliott's creature, lives at the fir" in p,
       "'your new friend' brings up who Spike is")
-check("you last saw him at the junkyard today at" in p and "you last talked with him today at" in p,
+check("You last saw him at the junkyard today at" in p and "You last talked with him today at" in p,
       "with when he last saw him and talked with him")
+check('at the machine shop, Spike said "We mesh good." and you said "Yeah, we do."' in p, "and what they said, so he can have an opinion")
 check("Steller's jay" in reply_prompt("Caelan", "I was talking about the jay you've been hanging with"), "'the jay' does too")
 check("Steller's jay" in reply_prompt("Elliott", "what do you think of Elliott's guy?"), "so does his human's name")
 check("Steller's jay" in reply_prompt("Caelan", "seen spike lately?"), "and his name, in any case")
 check("Other creatures you know" not in reply_prompt("Caelan", "how's the weather up there today?"),
       "talk that isn't about him leaves him out")
-s["fellows"]["Spike"].pop("talked")
 PROMPTS.clear()
 c.compose_reply(s, [("Spike", "found a beetle")], {"Spike": "found a beetle"}, "junkyard", "", [], [])
-check("Steller's jay" in PROMPTS[0] and "last talked" not in PROMPTS[0], "Spike talking brings it up too")
-check(s["fellows"]["Spike"].get("talked"), "and he remembers when they last talked")
+check("Steller's jay" in PROMPTS[0] and 'Spike said "We mesh' not in PROMPTS[0],
+      "Spike talking brings it up too, without repeating their old talk (it's in his past conversations)")
+s["fellows"]["Spike"].pop("lately")
+s["memories"].append({"tick": s["tick"], "when": c.now(), "feeling": 1,
+                      "text": 'Caelan says "yo"; Spike says "found a beetle" and I said "Nice, where?".'})
+check('Spike said "found a beetle" and you said "Nice, where?"' in reply_prompt("Caelan", "how's your buddy?"),
+      "talks from before he kept them come from his memories")
+s["convo"] = [{"who": "Spike", "said": "x", "reply": f"Spike, the glints again {i}"} for i in range(4)]
+check("spike" not in c.overused_words(s) and "glints" in c.overused_words(s), "names are never banned as crutch words")
 
 os.chdir("/")
 shutil.rmtree(WORK, ignore_errors=True)

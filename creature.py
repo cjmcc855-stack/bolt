@@ -1963,6 +1963,8 @@ def overused_words(s, n=8):
     stop = {"about", "there", "their", "would", "could", "every", "something", "really", "right", "think", "where",
             "which", "while", "these", "those", "today", "maybe", "still", "again", "caelan", "elliott", NAME.lower(),
             "found", "flew", "made", "called", "energy", "little"}
+    stop |= {w for n in list(s.get("people", {})) + list(FELLOWS) + list(s.get("fellows", {}))
+             for w in re.findall(r"[a-z']+", n.lower())}       # names are never crutch words
     counts = collections.Counter(w for t in texts for w in set(re.findall(r"[a-z']{5,}", str(t).lower())) if w not in stop)
     return [w for w, k in counts.most_common(8) if k >= 3]
 
@@ -2536,6 +2538,26 @@ def when_said(stamp):
         return stamp
 
 
+def talks_remembered(s, name):
+    """His last talks with a creature, from his recent memories (for before he kept them in s["fellows"])."""
+    out = []
+    for m in s["memories"]:
+        they = re.search(rf'\b{re.escape(name)} says "(.*?)"', m["text"])
+        me = re.search(r'and I said "(.*?)"\.', m["text"])
+        if they and me:
+            out.append({"when": m["when"], "they": clip(they.group(1), 160), "me": clip(me.group(1), 160)})
+    return out[-3:]
+
+
+def remember_talk(s, heard, creatures, reply, loc):
+    """What he and each creature just said to each other, kept with what he knows about them (fellow_facts)."""
+    for w, m in heard:
+        if w in creatures:
+            f = s.setdefault("fellows", {}).setdefault(w, {})
+            f["lately"] = (f.get("lately", []) + [{"when": now(), "where": loc, "they": clip(m, 160),
+                                                   "me": clip(reply or "", 160)}])[-3:]
+
+
 def fellow_facts(s, heard, creatures, here):
     """One plain line per creature this conversation touches: one talking, one here with him, or one the talk points
     at, by name, by its human's name, or by a clue like "your friend" or "the jay". Facts only, so he knows who's
@@ -2558,9 +2580,13 @@ def fellow_facts(s, heard, creatures, here):
             bits.append("here with you now")
         elif met.get("seen"):
             bits.append(f"you last saw {him} at the {met['seen_at'].replace('_', ' ')} {when_said(met['seen'])}")
-        if met.get("talked"):
-            bits.append(f"you last talked with {him} {when_said(met['talked'])}")
-        lines.append("- " + ". ".join(bits) + ".")
+        lately = met.get("lately") or talks_remembered(s, name)
+        if lately:
+            bits.append(f"you last talked with {him} {when_said(lately[-1]['when'])}")
+        lines.append("- " + ". ".join(b[:1].upper() + b[1:] for b in bits) + ".")
+        if lately and name not in creatures:                 # talking to him, the past conversations already show it
+            lines += [f"  {when_said(t['when'])}{' at the ' + t['where'].replace('_', ' ') if t.get('where') else ''}, "
+                      f"{name} said \"{t['they']}\" and you said \"{t['me']}\"" for t in lately[-2:]]
     return ("Other creatures you know (creatures like you, not you and not human; bring one up only if this is "
             "about them):\n" + "\n".join(lines) + "\n") if lines else ""
 
@@ -2577,8 +2603,6 @@ def compose_reply(s, heard, creatures, loc, event, gifts, ate):
     recent = "\n".join(f"- {clip(m['text'], 220)}" for m in s["memories"][-8:]) or "- (no memories yet)"
     here, echo = TOWN.here(loc), echoes(s, creatures)
     fellows = fellow_facts(s, heard, creatures, here)
-    for w in creatures:                                     # the line above says when they last talked, before this
-        s.setdefault("fellows", {}).setdefault(w, {})["talked"] = now()
     history = "\n".join(f"{c['who']}: {c['said']}\n{NAME}: {c['reply']}" for c in s.get("convo", [])[-6:]) \
         or "(you've never talked before)"
     last_replies = [c["reply"] for c in s.get("convo", [])[-5:] if c.get("reply")]
@@ -2710,7 +2734,8 @@ def reply_now(s):
     notice_company(s)
     coming =[l for l in peek_lines(OFFERINGS)]            # a gift being handed over right now
     reply = compose_reply(s, heard, creatures, loc, TOWN.event(loc), coming, [])
-    said = "; ".join(f'{w} says "{m}"' for w, m in heard)
+    remember_talk(s, heard, creatures, reply, loc)
+    said ="; ".join(f'{w} says "{m}"' for w, m in heard)
     s["convo"] = (s.get("convo", []) + [{"who": w, "said": m, "reply": ""} for w, m in heard[:-1]]
                   + [{"who": heard[-1][0], "said": heard[-1][1], "reply": reply}])[-12:]
     s["to_learn"] = s.get("to_learn", []) + [list(h) for h in heard]
@@ -2831,6 +2856,7 @@ def tick(s):
     reply = ""
     if heard:
         reply = compose_reply(s, heard, creatures, loc, event, gifts, ate)
+        remember_talk(s, heard, creatures, reply, loc)
         TOWN.after_reply(s, heard, reply)
         learn_about_people(s, heard)
         s["convo"] = (s.get("convo", []) + [{"who": w, "said": m, "reply": ""} for w, m in heard[:-1]]
