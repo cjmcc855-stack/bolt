@@ -786,14 +786,31 @@ def screen_creature(m, name, my_id, t):
     return CREATURE_TALK, f"{name}|{re.sub(r'[|]', ' ', words)[:600]}"
 
 
+DISCORD_SEEN = "discord_seen.txt"     # the last Discord message he read, so a restart doesn't drop what came meanwhile
+CATCH_UP = 1800                       # seconds: messages older than this when he starts are let go (stale by then)
+
+
+def message_time(mid):
+    """When a Discord message was sent, from its id."""
+    return ((int(mid) >> 22) + 1420070400000) / 1000
+
+
 def discord_listener():
-    """Polls the channel. Plain messages talk to Bolt, '/give <thing>' leaves a gift."""
+    """Polls the channel. Plain messages talk to Bolt, '/give <thing>' leaves a gift. After a restart he picks up
+    where he left off (DISCORD_SEEN), unless that was more than CATCH_UP ago."""
     cid = DISCORD["channel_id"]
     names = discord_names()
     last, my_id = None, None
     try:
         latest = discord_req("GET", f"/channels/{cid}/messages?limit=1")
         last = latest[0]["id"] if latest else "0"
+        try:
+            with open(DISCORD_SEEN, encoding="utf-8") as f:
+                seen = f.read().strip()
+            if seen.isdigit() and int(seen) < int(last) and time.time() - message_time(seen) < CATCH_UP:
+                last = seen                               # catch up on what came in while he was restarting
+        except OSError:
+            pass
         my_id = (discord_req("GET", "/users/@me") or {}).get("id")
         print(f"Connected to Discord. Talk to {NAME} in your channel.")
     except Exception as e:
@@ -811,6 +828,11 @@ def discord_listener():
             inbox(CREATURE_TALK, f"{who}|{re.sub(r'[|]', ' ', words)[:600]}")
         for m in sorted(msgs, key=lambda m: int(m["id"])):
             last = m["id"]
+            try:                                          # noted before it's handled, so a !restart never replays
+                with open(DISCORD_SEEN, "w", encoding="utf-8") as f:
+                    f.write(last)
+            except OSError:
+                pass
             user = m["author"]["username"]
             if m["author"].get("bot") or m.get("webhook_id"):
                 creature = fellow_creatures().get(user.lower())
@@ -880,6 +902,8 @@ def discord_listener():
                 inbox(OFFERINGS, f"{re.sub(r'[|]', ' ', text[6:].strip())[:200]} (from {who})")
             elif not for_another_creature(m, text, my_id):
                 inbox(TALK, f"{who}|{re.sub(r'[|]', ' ', readable_mentions(m, text, my_id))[:1500]}")
+            else:
+                creature_log(who, text, "names another creature, not Bolt: left for them")
 
 
 # ---------------- ACTIONS ----------------
@@ -1735,6 +1759,16 @@ def stems(text):
     """The words that carry meaning, roughly stemmed: 'fishing', 'fished' and 'fish' all count as 'fish'."""
     return {re.sub(r"(ing|ed|es|s)$", "", w) if len(w) > 5 else w
             for w in re.findall(r"[a-z]{4,}", str(text).lower()) if w not in COMMON_WORDS}
+
+
+def records_note(s):
+    """His fishing records, biggest first, so 'your biggest fish' has one plain answer."""
+    recs = sorted(((k.replace("biggest ", ""), v) for k, v in s.get("records", {}).items()), key=lambda r: -r[1])
+    if not recs:
+        return ""
+    (fish, inches), rest = recs[0], recs[1:]
+    return (f"Your biggest fish ever: {a_an(fish)}, {inches} inches."
+            + (f" Your other fishing records: {', '.join(f'{f} {i} inches' for f, i in rest)}." if rest else ""))
 
 
 ASKS_PAST = re.compile(r"\b(past|ever|before|remember|used to|yesterday|last (time|week|night)|biggest|best|first|"
@@ -2669,7 +2703,7 @@ def compose_reply(s, heard, creatures, loc, event, gifts, ate):
         f"Words you've picked up and like: {', '.join(s['words'][-10:]) or 'none yet'}\n"
         + (f"Things you know that connect to what they said: {'; '.join(on_topic)}\n" if on_topic else "")
         + f"On your display shelf: {', '.join(s['collection']) or 'empty'}\n{hoard_summary()}\n"
-        + (f"Your records: {', '.join(f'{k}: {v} inches' for k, v in s['records'].items())}\n" if s.get("records") else "")
+        + (records_note(s) + "\n" if s.get("records") else "")
         + (f"From your memory book (things that really happened to you, that connect to what they said):\n"
            + "".join(f"- {h}\n" for h in past) if past else "")
         + f"What you've actually been doing lately (most recent last):\n{recent}\n\n"
@@ -2952,7 +2986,7 @@ Books in your library: {", ".join(book_title(b) for b in books()) or "none yet"}
 Things you can do HERE at the {loc}: {", ".join(a[3] for a in ACTIVITIES.values() if loc in a[0]) or "nothing special"}
 Where other activities are: {"; ".join(f"{k} at {'/'.join(v[0])}" for k, v in ACTIVITIES.items() if loc not in v[0])}
 Your skills: {", ".join(f"{k} level {skill_level(s, k)}" for k in s["skills"]) or "none yet"}
-Your records: {", ".join(f"{k}: {v} inches" for k, v in s["records"].items()) or "none yet"}
+{records_note(s) or "Your fishing records: none yet."}
 Actions: go (target = a place), scavenge, draw (target = subject), make_music (target = what it's about),
 watch, nap, sleep, rearrange_collection (target = treasures to admire; at your nest you can dig anything out of the hoard), think,
 read (target = a book), look_up (target = anything you're curious about, looked up in the big book of everything),

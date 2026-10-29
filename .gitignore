@@ -45,3 +45,6 @@ tunes/
 
 # the shared-town switch (has Bolt's world token)
 world_config.json
+
+# the last Discord message he read (catch-up after a restart)
+discord_seen.txt

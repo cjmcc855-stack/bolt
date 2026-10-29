@@ -4,7 +4,9 @@ creature_loop_test.py - throws a badly behaved bot at Bolt's Discord listener an
     python tests/creature_loop_test.py [path/to/bolt_folder_or_creature.py]
 
 The fake "Spike" here has no limits at all: it answers every post that mentions it within seconds, spams,
-tries owner commands, and floods gifts. Runs on a fake clock and a fake channel; nothing touches Discord.
+tries owner commands, and floods gifts. Also: messages sent while Bolt restarts are picked up afterwards (stale
+ones aren't), and a message he leaves for Spike is logged. Runs on a fake clock and a fake channel; nothing
+touches Discord.
 """
 import importlib.util, json, os, shutil, sys, tempfile, threading
 from datetime import datetime
@@ -82,9 +84,9 @@ def now(t):
     return datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M")
 
 
-def run(world):
-    for p in os.listdir("."):
-        if p.endswith((".txt", ".pending")):        # includes creature_log.txt
+def run(world, fresh=True):
+    for p in os.listdir(".") if fresh else []:
+        if p.endswith((".txt", ".pending")):        # includes creature_log.txt and discord_seen.txt
             os.remove(p)
     c.GUARD = c.CreatureGuard()
     c.AWAKE.set()
@@ -227,12 +229,47 @@ run(w)
 talk = [l for l in open(c.TALK).read().splitlines() if "seed" not in l] if os.path.exists(c.TALK) else []
 check(talk == ["Caelan|Bolt introduce yourself to Spike!", "Caelan|hey spike, what about bolt?", "Caelan|hey everyone"],
       f"'Hi Spike!' left for Spike; '@Bolt ... Spike' and the rest heard: {talk}")
+check(os.path.exists(c.CREATURE_LOG) and
+      "Caelan: Hi Spike!  ->  names another creature, not Bolt: left for them" in open(c.CREATURE_LOG, encoding="utf-8").read(),
+      "and the one he left for Spike is logged, so it's never a mystery")
 g = c.CreatureGuard()
 for i in range(c.CREATURE_STREAK):
     g.hear("Spike", f"message about {WORDS[i]}", base + i * 700)
 check(g.hear("Spike", "one more", base + (c.CREATURE_STREAK + 1) * 700) is not None, "goes quiet after a long bot-only back-and-forth")
 g.human_spoke()
 check(g.hear("Spike", "after a human", base + (c.CREATURE_STREAK + 2) * 700) is None, "a human talking ends the break")
+
+print("6. a restart doesn't drop messages, never replays a !restart, and stale ones are let go")
+
+
+def snowflake(t):
+    return (int(t * 1000) - 1420070400000) << 22          # a Discord id sent at time t
+
+
+def talk_lines():
+    return open(c.TALK).read().splitlines() if os.path.exists(c.TALK) else []
+
+
+c.RESTART.clear()
+w = World(0.05, script=[(base + 20, ("actuallyputin", "9", "!restart"))])
+w.next_id = snowflake(w.t)
+run(w)                                                    # his first life: hears the !restart, then stops
+check(c.RESTART.is_set() and os.path.exists(c.DISCORD_SEEN), "the !restart was heard and the last message noted")
+c.RESTART.clear()
+later = World(0.05)
+later.t, later.end = w.t + 60, w.t + 60 + 180              # back a minute later
+later.msgs, later.next_id = list(w.msgs), snowflake(w.t + 30)
+later.post("actuallyputin", "9", "hey bolt, you there?")   # sent while he was restarting
+run(later, fresh=False)
+check("Caelan|hey bolt, you there?" in talk_lines(), "a message sent during the restart is picked up afterwards")
+check(not c.RESTART.is_set(), "the !restart from before isn't replayed")
+stale = World(0.05)
+stale.t, stale.end = later.t + 7200, later.t + 7200 + 180  # back two hours later
+stale.msgs, stale.next_id = list(later.msgs), snowflake(later.t + 60)
+stale.post("actuallyputin", "9", "old news from two hours ago")
+stale.post("actuallyputin", "9", "older news, also stale")
+run(stale, fresh=False)
+check(not any("news" in l for l in talk_lines()), "after a long time away, old messages aren't answered")
 
 os.chdir("/")
 shutil.rmtree(WORK, ignore_errors=True)

@@ -122,7 +122,7 @@ book += [{"when": f"2026-10-04 {h:02d}:00", "where": "junkyard", "feeling": 0, "
 with open(c.MEMORY_BOOK, "w", encoding="utf-8") as f:
     f.writelines(json.dumps(m) + "\n" for m in book)
 c._BOOK_CACHE["mtime"] = None
-s["records"] = {"biggest brown trout": 8.7}
+s["records"] = {"biggest rainbow trout": 8.6, "biggest brown trout": 8.7, "biggest bluegill": 6.5}
 
 
 def asked(said):
@@ -133,7 +133,8 @@ def asked(said):
 
 
 p, past = asked("Bolt you should tell Spike about the fish you've caught in the past!")
-check("Your records: biggest brown trout: 8.7 inches" in p, "his records are in front of him when he answers")
+check("Your biggest fish ever: a brown trout, 8.7 inches. Your other fishing records: rainbow trout 8.6 inches, "
+      "bluegill 6.5 inches." in p, "his records are in front of him when he answers, biggest first")
 check("on Oct 1 at the creek: caught a 8.7-inch brown trout" in past and "bluegill" in past, "he remembers his catches")
 check("I was thinking" not in past, "without the side thoughts")
 check("train" not in past, "'in the past' doesn't drag up a train that went past")

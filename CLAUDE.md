@@ -17,7 +17,7 @@ next to the code and are git-ignored.
    his shared-town token). Never commit them. If you need to know whether the shared town is on, read Bolt's
    console output or state, not that file.
 3. **Never commit his life:** `state.json*`, `hoard.json*`, `memory_book.jsonl`, `diary.md`, `temps.csv`,
-   `creature_log.txt`, inbox files, `songs/`, `drawings/`, `patches/`, `tunes/`, `names.json`,
+   `creature_log.txt`, `discord_seen.txt`, inbox files, `songs/`, `drawings/`, `patches/`, `tunes/`, `names.json`,
    `creatures.json`. `.gitignore` covers them; keep it that way.
 4. **Every change gets committed and pushed** to `cjmcc855-stack/bolt` (`main`), after the tests pass.
 5. **Gifts are sacred.** Anything a human gave him can never be lost, used up, taken or given away
