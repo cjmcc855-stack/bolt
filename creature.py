@@ -1989,6 +1989,14 @@ class LocalTown:
         """Sends one queued action. Returns the town's answer, or None if there was no answer."""
         return {"ok": True, "id": body["id"]}
 
+    def deliveries(self, s):
+        """What the town is handing him: [{"id", "item", "from", "how"}], or None if the town didn't answer.
+        His own town hands things over through gifts and hidden items instead, so it has none."""
+        return []
+
+    def ack(self, ids):
+        """Tells the town these deliveries are safely saved (safe to repeat)."""
+
     def on_reply(self, s, entry, reply):
         """Applies the town's answer to a queued action (reply None = gave up on it)."""
 
@@ -2006,11 +2014,50 @@ def queue_action(s, action, **fields):
     box.append({"t": time.time(), "body": body})
 
 
+def collect_deliveries(s):
+    """Takes what the town is handing him. Each delivery's id is saved with the turn, so one the town shows again
+    (a crash before the ack, or a lost ack reply) never lands in his hoard twice. Ids are forgotten once the
+    town stops showing them, but never while it isn't answering. Returns (gift lines, things he picked up)."""
+    shown = TOWN.deliveries(s)
+    if shown is None:
+        return [], []
+    have = s.get("delivered", [])
+    gifts, picked, new = [], [], []
+    for d in shown:
+        did = str(d.get("id") or "")
+        if not did or did in have or did in new:
+            continue
+        new.append(did)
+        item = clip(str(d.get("item") or "").strip(), 60)
+        who, how = str(d.get("from") or "").strip() or "someone", str(d.get("how") or "")
+        if not item:
+            continue
+        if how.startswith("you picked it up"):
+            picked.append(item)                           # something he took: a find, not a gift
+        elif " left it for you at " in how:
+            gifts.append(f"{item} (left by {who} at {how.split(' left it for you at ', 1)[1]})")
+        else:
+            gifts.append(f"{item} (from {who})")
+    ids = {str(d.get("id")) for d in shown}
+    kept = [i for i in have if i in ids] + new
+    if kept:
+        s["delivered"] = kept
+    else:
+        s.pop("delivered", None)
+    return gifts, picked
+
+
 def send_outbox(s, restarted=False):
     """Sends what his last step queued (already saved), and saves after each answer, so a crash at any point
     can't lose an action or do one twice. A give, drop or take with no answer stays queued and is resent later
     with the same id (the town ignores repeats). Anything else with no answer is just let go, and after a
-    restart only those three are resent: an old line of talk or a move would arrive late and wrong."""
+    restart only those three are resent: an old line of talk or a move would arrive late and wrong.
+    Deliveries he's saved are acked here too, after the save (repeating an ack is harmless)."""
+    if s.get("delivered"):
+        try:
+            TOWN.ack(list(s["delivered"]))
+        except Exception as e:
+            print(f"[{now()}] couldn't ack deliveries to {TOWN.name} ({e})")
     for entry in list(s.get("outbox") or []):
         kind = entry["body"]["action"]
         try:
@@ -2304,6 +2351,10 @@ def tick(s):
             event = TOWN.event(loc)
         diary(f"**{now()}** 👋 {who} called {NAME} to the {nice}. He {seen}.\n")
     gifts += TOWN.finds_here(s, loc)                        # he finds whatever was left where he is
+    handed, picked = collect_deliveries(s)                  # the shared town's deliveries (none in his own town)
+    gifts += handed
+    for item in picked:
+        add_item(s, item)
     shiny = TOWN.shiny(s)
     town_note = TOWN.summary(s)
     ate = []
@@ -2334,7 +2385,7 @@ def tick(s):
     prompt = f"""It's {datetime.now().strftime('%B')} ({season()}), {tod}. Weather: {sky}. You're at the {loc}: {place_desc(loc)}
 Right now: {event}.
 {town_note}
-{"You just got gifts: " + "; ".join(gifts) + "." if gifts else ""}
+{"You just got gifts: " + "; ".join(gifts) + "." if gifts else ""}{(" You picked up and stashed: " + ", ".join(picked) + ".") if picked else ""}
 {("You ate: " + ", ".join(ate) + ".") if ate else ""}
 {("Words you've been overusing (find fresh ones): " + ", ".join(overused_words(s))) if overused_words(s) else ""}
 {("You were just talking with someone: " + said + f'. You answered: "{reply}"') if reply else ""}

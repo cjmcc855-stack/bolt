@@ -172,6 +172,50 @@ TOWN.applied.clear()
 c.send_outbox(s)
 check(not TOWN.sent and TOWN.applied == [("give", None)], "a give unanswered for 30 days is given up, not resent")
 
+print("7. deliveries: each one lands in his hoard once, however many times the town shows it")
+SHOWN = {"list": []}
+ACKED = []
+
+
+class DeliveringTown(c.LocalTown):
+    name = "the delivering town"
+
+    def deliveries(self, s):
+        return None if SHOWN["list"] is None else list(SHOWN["list"])
+
+    def ack(self, ids):
+        with open(c.STATE_FILE, encoding="utf-8") as f:
+            ACKED.append((list(ids), set(ids) <= set(json.load(f).get("delivered", []))))
+
+
+def count(name):
+    return sum(v["count"] for k, v in c.hoard()["items"].items() if k.startswith(name))
+
+
+c.TOWN = DeliveringTown()
+PLAN.update(action="think", target="")
+SHOWN["list"] = [{"id": "d1", "item": "spinner lure", "from": "Spike", "how": "a gift from Spike"},
+                 {"id": "d2", "item": "brass key", "from": "Caelan", "how": "Caelan left it for you at the lake"},
+                 {"id": "d3", "item": "bottle cap", "from": "Spike", "how": "you picked it up at the lake"}]
+s = c.run_tick(s)
+check(count("spinner lure (from Spike)") == 1 and c.is_gift("spinner lure (from Spike)"), "a gift from Spike lands as a gift")
+check(count("brass key (left by Caelan at the lake)") == 1, "something left for him lands as left by Caelan")
+check(count("bottle cap") == 1 and not c.hoard()["items"]["bottle cap"]["gift"], "something he picked up is a find, not a gift")
+check(not ACKED, "nothing is acked during the turn")
+c.send_outbox(s)
+check(ACKED and ACKED[-1][1] and sorted(ACKED[-1][0]) == ["d1", "d2", "d3"], "acked after the save, all three")
+s = c.run_tick(s)                                # the ack got lost: the town shows them again
+check(count("spinner lure") == 1 and count("brass key") == 1 and count("bottle cap") == 1, "shown again: nothing lands twice")
+SHOWN["list"] = None                             # the town is away
+s = c.run_tick(s)
+check(sorted(s.get("delivered", [])) == ["d1", "d2", "d3"], "while the town is away, he keeps the ids")
+SHOWN["list"] = [{"id": "d1", "item": "spinner lure", "from": "Spike", "how": "a gift from Spike"}]
+s = c.run_tick(s)
+check(count("spinner lure") == 1 and s.get("delivered") == ["d1"], "back again: still once, and ids the town dropped are forgotten")
+SHOWN["list"] = []
+s = c.run_tick(s)
+check("delivered" not in s, "nothing shown: nothing remembered")
+
 os.chdir("/")
 shutil.rmtree(WORK, ignore_errors=True)
 print(f"\nPROBLEMS: {len(PROBLEMS)}")
