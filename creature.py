@@ -1988,6 +1988,27 @@ def sleep_tick(s, wake_reason=None):
     return True
 
 
+def react_to_gifts(s, gifts, ate):
+    """His reaction to what he was just given, thought about on its own so he can't mix it up with
+    the other things on his shelf."""
+    lines = []
+    for g in gifts:
+        know = item_knows(s, g)[:3]
+        lines.append(f"- {bare(g)}, {g[g.rfind('(') + 1:-1] if g.endswith(')') else 'from someone'}"
+                     + (f". What you know about it: {'; '.join(know)}" if know else ""))
+    crutch = overused_words(s)
+    out = call_llm(
+        "You were just given:\n" + "\n".join(lines) + "\n"
+        + (f"You ate: {', '.join(ate)}.\n" if ate else "")
+        + f"How you talk: {s.get('voice') or 'short, blunt, bird-brained'}\n"
+        "React to exactly THIS, calling it by what it is. It's new; it's not anything else you already own. "
+        "If you don't know what it is, say so, or guess from what you can see. 1 or 2 short sentences, like a bird "
+        "talking to a friend, not a poem. "
+        + (f"Don't use these overused words: {', '.join(crutch)}. " if crutch else "")
+        + f"Output only what {NAME} says, no quotes, no name label.", json_mode=False, temp=0.8)
+    return clip(re.sub(rf"^\*?\*?{NAME}\*?\*?:\s*", "", out).strip().strip('"'), 300)
+
+
 def tick(s):
     if s.get("asleep_until"):
         AWAKE.clear()
@@ -2107,7 +2128,7 @@ def tick(s):
     sky = f"{weather}, {wx['temp_f']}°F, wind {wx['wind_mph']} mph (the real weather on the mountain right now)" if wx else weather
     prompt = f"""It's {datetime.now().strftime('%B')} ({season()}), {tod}. Weather: {sky}. You're at the {loc}: {PLACES[loc]}
 Right now: {event}.
-{"You just got gifts: " + "; ".join(gifts) + ". React to them in gift_reaction." if gifts else ""}
+{"You just got gifts: " + "; ".join(gifts) + "." if gifts else ""}
 {("You ate: " + ", ".join(ate) + ".") if ate else ""}
 {("Words you've been overusing (find fresh ones): " + ", ".join(overused_words(s))) if overused_words(s) else ""}
 {("You were just talking with someone: " + said + f'. You answered: "{reply}"') if heard else ""}
@@ -2145,7 +2166,7 @@ reminisce (target = optional: a memory to look for; pages back through your memo
 examine (target = anything in your collection or hoard, to study it closely and figure out something new about it; things you understand completely don't need examining again),
 {"play_synth (target = what the patch is about; your modular synthesizer lives in your nest, so only there; synthesis level " + str(skill_level(s, "synthesis")) + "), " if has_synth() else ""}plus the activities above (only where they're available).
 Do whatever YOU feel like. Respond ONLY with JSON:
-{{"thought": "one sentence, first person", "action": "...", "target": "...", "gift_reaction": "how you react to any gifts you just got, in your own voice, otherwise empty"}}"""
+{{"thought": "one sentence, first person", "action": "...", "target": "..."}}"""
 
     d = parse_json(call_llm(prompt))
     action = d.get("action") if d.get("action") in ACTIONS else "think"
@@ -2184,7 +2205,7 @@ Do whatever YOU feel like. Respond ONLY with JSON:
         s["prefs"][key] = round(clamp(s["prefs"].get(key, 0) + 0.15 * feeling * novelty, -3, 3), 3)
     s["mood"] = int(clamp(round(s["mood"] * 0.7 + feeling), -5, 5))
     convo = (f"{said} and I said \"{reply}\". ") if heard else ""
-    gift_reaction = str(d.get("gift_reaction") or "").strip() if gifts else ""
+    gift_reaction = react_to_gifts(s, gifts, ate) if gifts else ""
     gift_note = f"Got gifts: {', '.join(gifts)}. My reaction: {gift_reaction} " if gifts else ""
     if gifts:
         diary(f"**{now()}** 🎁 " + "; ".join(gifts) + f"\n**{NAME}:** {gift_reaction or '(snatches it and stares at you)'}\n")
