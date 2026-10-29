@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 reply_test.py - checks Bolt's quick replies: he answers right away, his turn knows what he said, humans can
-wake him and creatures can't, and if the quick reply fails his turn still answers.
+wake him and creatures can't, if the quick reply fails his turn still answers, and asked about his past he
+remembers a few real moments from his memory book (and his records).
 
     python tests/reply_test.py [path/to/bolt_folder]
 
@@ -104,6 +105,44 @@ check(json.dumps(s, sort_keys=True) == before and c.has_talk(), "a failed reply 
 BROKEN["reply"] = False
 s = c.run_tick(s)
 check(any("you there?" in p for p in POSTS) and not c.has_talk(), "the turn picks it up and answers")
+
+print("5. asked about his past, he remembers it (a few things, never a list of everything)")
+book = [{"when": "2026-10-01 09:41", "where": "creek", "feeling": 2, "kind": "moment", "special": True,
+         "text": "caught a 8.7-inch brown trout and ate it (a new personal record!). Proud. (I was thinking: fish!)"},
+        {"when": "2026-10-01 10:00", "where": "lake", "feeling": 1, "kind": "moment", "special": False,
+         "text": "caught a 4-inch bluegill and ate it. Small but tasty."},
+        {"when": "2026-10-02 11:02", "where": "lake", "feeling": 1, "kind": "talk", "special": True,
+         "text": "Got gifts: lighter (left by Elliott at the lake). My reaction: Fire in a little box!"},
+        {"when": c.now(), "where": "lake", "feeling": 1, "kind": "talk", "special": True,
+         "text": 'Caelan says "tell me about the fish you caught" and I said "Kraa."'}]
+book += [{"when": f"2026-10-03 {h:02d}:00", "where": "rail_yard", "feeling": 0, "kind": "moment", "special": False,
+          "text": f"sat and watched a long freight train thunder past, number {h}"} for h in range(10)]
+book += [{"when": f"2026-10-04 {h:02d}:00", "where": "junkyard", "feeling": 0, "kind": "moment", "special": False,
+          "text": f"made a song called 'Rust {h}' and hummed it"} for h in range(10)]
+with open(c.MEMORY_BOOK, "w", encoding="utf-8") as f:
+    f.writelines(json.dumps(m) + "\n" for m in book)
+c._BOOK_CACHE["mtime"] = None
+s["records"] = {"biggest brown trout": 8.7}
+
+
+def asked(said):
+    PROMPTS.clear()
+    c.compose_reply(s, [("Caelan", said)], {}, "lake", "wind", [], [])
+    p = PROMPTS[0]
+    return p, p.split("From your memory book", 1)[1].split("What you've actually")[0] if "From your memory book" in p else ""
+
+
+p, past = asked("Bolt you should tell Spike about the fish you've caught in the past!")
+check("Your records: biggest brown trout: 8.7 inches" in p, "his records are in front of him when he answers")
+check("on Oct 1 at the creek: caught a 8.7-inch brown trout" in past and "bluegill" in past, "he remembers his catches")
+check("I was thinking" not in past, "without the side thoughts")
+check("train" not in past, "'in the past' doesn't drag up a train that went past")
+check("tell me about the fish" not in past, "the last couple of hours of talk aren't recalled (they're already in front of him)")
+check("Got gifts: lighter (left by Elliott at the lake)" in asked("remember when Elliott left you the lighter?")[1],
+      "a gift that came while he was talking is still remembered")
+check(asked("how's the weather up there?")[1] == "", "small talk recalls nothing")
+check(asked("I'm going fishing after work")[1] == "", "not asked, one shared word isn't enough")
+check(asked("have you ever made a song in the rust?")[1].count("\n- ") <= 3, "asked, at most three memories")
 
 os.chdir("/")
 shutil.rmtree(WORK, ignore_errors=True)

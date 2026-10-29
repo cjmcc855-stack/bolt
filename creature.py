@@ -46,7 +46,7 @@ SAFETY RULES THE CODE KEEPS
   - Other creatures (bots listed in creatures.json) are heard under strict loop limits and can never run commands.
 """
 import json, os, random, re, socket, struct, subprocess, sys, threading, time, wave, urllib.parse, urllib.request
-import collections, copy, difflib, tempfile
+import collections, copy, difflib, math, tempfile
 from datetime import datetime
 try:
     import synth                      # his modular synthesizer (synth.py, next to this file)
@@ -1714,7 +1714,7 @@ def backfill_memory_book():
     return n
 
 
-_BOOK_CACHE = {"mtime": None, "data": (0, [])}
+_BOOK_CACHE = {"mtime": None, "data": (0, []), "index": [], "df": collections.Counter()}
 
 
 def book_overview():
@@ -1725,8 +1725,54 @@ def book_overview():
         return 0, []
     if mt != _BOOK_CACHE["mtime"]:
         book = read_memory_book()
-        _BOOK_CACHE.update(mtime=mt, data=(len(book), [m for m in book if m.get("special")][-40:]))
+        index = [(stems(f"{m.get('text', '')} {m.get('where', '')}"), m) for m in book]
+        _BOOK_CACHE.update(mtime=mt, data=(len(book), [m for m in book if m.get("special")][-40:]), index=index,
+                           df=collections.Counter(w for st, _ in index for w in st))
     return _BOOK_CACHE["data"]
+
+
+def stems(text):
+    """The words that carry meaning, roughly stemmed: 'fishing', 'fished' and 'fish' all count as 'fish'."""
+    return {re.sub(r"(ing|ed|es|s)$", "", w) if len(w) > 5 else w
+            for w in re.findall(r"[a-z]{4,}", str(text).lower()) if w not in COMMON_WORDS}
+
+
+ASKS_PAST = re.compile(r"\b(past|ever|before|remember|used to|yesterday|last (time|week|night)|biggest|best|first|"
+                       r"favou?rite|stor(y|ies)|tell|you've|have you|did you|caught|found|got)\b", re.I)
+ASKING_WORDS = {"past", "ever", "before", "remember", "used", "yesterday", "last", "time", "week", "night", "biggest",
+                "best", "first", "favorite", "favourite", "story", "stories", "tell", "think", "thought", "coolest",
+                "thing", "stuff", "something", "anything", "everything", "kind"}
+
+
+def remember_past(s, msgs):
+    """What his whole life (the memory book) has to say about what someone just said: the moments that share
+    the rarest words with it ('trout' counts, 'thing' hardly does); records, gifts and special moments a bit higher.
+    Asked about his past, up to 3; otherwise 1 at most, and only a strong match, so it never turns into a list."""
+    book_overview()
+    index, df = _BOOK_CACHE["index"], _BOOK_CACHE["df"]
+    names = {w.lower() for w in [NAME, HUMAN] + list(s.get("people", {})) + list(FELLOWS)}
+    words = stems(msgs) - names - ASKING_WORDS              # "past" is how they asked, not what about
+    if not index or not words:
+        return []
+    asked = bool(ASKS_PAST.search(msgs))
+    lately = datetime.fromtimestamp(time.time() - 7200).strftime("%Y-%m-%d %H:%M")   # talk since: already in front of him
+    scored = []
+    for i, (st, m) in enumerate(index):
+        hit = words & st
+        talk = m.get("kind") == "talk"
+        if hit and (asked or len(hit) >= 2) and not (talk and m.get("when", "") >= lately):  # unasked, one word is luck
+            score = sum(math.log(len(index) / df[w]) for w in hit)
+            text = m.get("text", "")
+            score += (0.5 * (bool(m.get("special")) and not talk) - 0.5 * talk + 0.5 * ("record" in text)
+                      + 0.5 * ("Got gifts" in text or m.get("kind") == "gift"))
+            scored.append((score, i, m))
+    best = [x for x in sorted(scored, key=lambda x: x[:2], reverse=True) if x[0] >= (1 if asked else 6)][:3 if asked else 1]
+    out = []
+    for _, i, m in sorted(best, key=lambda x: x[1]):          # oldest first, like a story
+        text = re.sub(r"\s+", " ", m.get("text", "").split(" (I was thinking:")[0])
+        where = f" at the {m['where'].replace('_', ' ')}" if m.get("where") else ""
+        out.append(f"{when_said(m.get('when', ''))}{where}: {clip(text, 160)}")
+    return out
 
 
 def item_key(item):
@@ -2603,6 +2649,7 @@ def compose_reply(s, heard, creatures, loc, event, gifts, ate):
     recent = "\n".join(f"- {clip(m['text'], 220)}" for m in s["memories"][-8:]) or "- (no memories yet)"
     here, echo = TOWN.here(loc), echoes(s, creatures)
     fellows = fellow_facts(s, heard, creatures, here)
+    past = remember_past(s, " ".join(m for _, m in heard))
     history = "\n".join(f"{c['who']}: {c['said']}\n{NAME}: {c['reply']}" for c in s.get("convo", [])[-6:]) \
         or "(you've never talked before)"
     last_replies = [c["reply"] for c in s.get("convo", [])[-5:] if c.get("reply")]
@@ -2622,7 +2669,10 @@ def compose_reply(s, heard, creatures, loc, event, gifts, ate):
         f"Words you've picked up and like: {', '.join(s['words'][-10:]) or 'none yet'}\n"
         + (f"Things you know that connect to what they said: {'; '.join(on_topic)}\n" if on_topic else "")
         + f"On your display shelf: {', '.join(s['collection']) or 'empty'}\n{hoard_summary()}\n"
-        f"What you've actually been doing lately (most recent last):\n{recent}\n\n"
+        + (f"Your records: {', '.join(f'{k}: {v} inches' for k, v in s['records'].items())}\n" if s.get("records") else "")
+        + (f"From your memory book (things that really happened to you, that connect to what they said):\n"
+           + "".join(f"- {h}\n" for h in past) if past else "")
+        + f"What you've actually been doing lately (most recent last):\n{recent}\n\n"
         f"Your past conversations:\n{history}\n\n"
         f"{know}\n\n"
         + (f"You JUST got these, they're with you now: {'; '.join(gifts)}.\n" if gifts else "")

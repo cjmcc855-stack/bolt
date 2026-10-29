@@ -67,6 +67,9 @@ next to the code and are git-ignored.
   wake/sleep changes at his place in the diary ("👀 Bolt sees: …") and his memories. His replies get plain facts
   about creatures the talk touches (`fellow_facts`: by name, their human's name, or clues like "your friend" /
   "the jay"), from `FELLOWS` and `s["fellows"]` (last seen, last 3 talks). Facts only, never how to feel.
+- **Remembering his past in replies:** `remember_past` searches his whole memory book by the rarest shared
+  words (stemmed); up to 3 moments when he's asked about his past, at most 1 strong match otherwise, never talk
+  from the last 2 hours. His fishing records are always in reply prompts.
 - **Creatures on Discord:** `CreatureGuard` (30 s bursts, 8-exchange streak then a 30-minute break, 60 a day,
   3 gifts a day). Creatures can never run owner commands. `creatures.json` maps bot names to creature names.
 - **Test gotchas:** fake brains must accept `**kw`; tests that use the real clock set `c.is_night = lambda:
