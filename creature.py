@@ -2510,10 +2510,59 @@ def notice_company(s):
             seen.append(f"{c['name']} {NOW_STATE.get(c['state'], 'is ' + c['state'])}")
     seen += [f"{who} left the {nice}" for who in before if who not in now_with]
     ws["with"], ws["with_at"] = now_with, loc
+    for c in here:
+        s.setdefault("fellows", {}).setdefault(c["name"], {}).update(seen=now(), seen_at=loc)
     if seen:
         text = "; ".join(seen)
         diary(f"**{now()}** 👀 {NAME} sees: {text}.\n")
         s["memories"] = (s["memories"] + [{"tick": s["tick"], "when": now(), "feeling": 0, "text": f"I saw: {text}."}])[-60:]
+
+
+# Plain facts about the other creatures he knows, so "your friend" or "the jay" means something to him.
+FELLOWS = {"Spike": {"is": "a Steller's jay (dark blue and black, with a tall crest)", "owner": "Elliott", "home": "fir",
+                     "him": "him"}}
+KIN = re.compile(r"\b(friends?|buddy|buddies|pals?|mates?|jays?|blue ?jays?|birds?|creatures?|neighbou?rs?|"
+                 r"company|the other (one|guy|bird)|who(?:'s| is| was) (here|there|around))\b", re.I)
+
+
+def when_said(stamp):
+    """'today at 11:41' or 'on Oct 28', from a now() stamp."""
+    day, _, hm = stamp.partition(" ")
+    if day == now()[:10]:
+        return f"today at {hm}"
+    try:
+        return "on " + datetime.strptime(day, "%Y-%m-%d").strftime("%b %d").replace(" 0", " ")
+    except ValueError:
+        return stamp
+
+
+def fellow_facts(s, heard, creatures, here):
+    """One plain line per creature this conversation touches: one talking, one here with him, or one the talk points
+    at, by name, by its human's name, or by a clue like "your friend" or "the jay". Facts only, so he knows who's
+    who without anyone having to spell it out."""
+    msgs = " ".join(m for _, m in heard)
+    here_names = {c["name"] for c in here or []}
+    known = list(dict.fromkeys(list(FELLOWS) + list(s.get("fellows", {})) + list(creatures)))
+    lines = []
+    for name in known:
+        f, met = FELLOWS.get(name, {}), s.get("fellows", {}).get(name, {})
+        owner = f.get("owner")
+        if not (name in creatures or name in here_names or KIN.search(msgs)
+                or re.search(rf"\b{re.escape(name)}\b", msgs, re.I)
+                or (owner and re.search(rf"\b{re.escape(owner)}'?s\b", msgs, re.I))):
+            continue
+        him = f.get("him", "them")
+        bits = [f"{name}: {f.get('is', 'another creature')}" + (f", {owner}'s creature" if owner else "")
+                + (f", lives at the {f['home'].replace('_', ' ')}" if f.get("home") else "")]
+        if name in here_names:
+            bits.append("here with you now")
+        elif met.get("seen"):
+            bits.append(f"you last saw {him} at the {met['seen_at'].replace('_', ' ')} {when_said(met['seen'])}")
+        if met.get("talked"):
+            bits.append(f"you last talked with {him} {when_said(met['talked'])}")
+        lines.append("- " + ". ".join(bits) + ".")
+    return ("Other creatures you know (creatures like you, not you and not human; bring one up only if this is "
+            "about them):\n" + "\n".join(lines) + "\n") if lines else ""
 
 
 def echoes(s, creatures):
@@ -2527,6 +2576,9 @@ def compose_reply(s, heard, creatures, loc, event, gifts, ate):
     """What he says back. Used by quick replies and by his turn (same prompt either way)."""
     recent = "\n".join(f"- {clip(m['text'], 220)}" for m in s["memories"][-8:]) or "- (no memories yet)"
     here, echo = TOWN.here(loc), echoes(s, creatures)
+    fellows = fellow_facts(s, heard, creatures, here)
+    for w in creatures:                                     # the line above says when they last talked, before this
+        s.setdefault("fellows", {}).setdefault(w, {})["talked"] = now()
     history = "\n".join(f"{c['who']}: {c['said']}\n{NAME}: {c['reply']}" for c in s.get("convo", [])[-6:]) \
         or "(you've never talked before)"
     last_replies = [c["reply"] for c in s.get("convo", [])[-5:] if c.get("reply")]
@@ -2540,6 +2592,7 @@ def compose_reply(s, heard, creatures, loc, event, gifts, ate):
     reply = call_llm(
         f"Right now you are AT the {loc} ({place_desc(loc)}). {event}. Mood {s['mood']}/5, energy {s['energy']}/100.\n"
         + (f"Here at the {loc} with you right now: {company(here)}.\n" if here else "")
+        + fellows
         + f"Who you are: {s['likes']}\n"
         f"How you talk: {s.get('voice') or 'short, blunt, bird-brained'}\n"
         f"Words you've picked up and like: {', '.join(s['words'][-10:]) or 'none yet'}\n"
