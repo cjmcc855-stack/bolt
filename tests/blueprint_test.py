@@ -72,7 +72,7 @@ check("twin-turbo V8 (1 of 4 things worked out" in c.blueprint_note(s), "his tur
 for _ in range(3):
     out = c.do_examine("blueprint twin-turbo V8", s)
 check("goes together" in out and s["blueprints"]["v8"]["learned"] == 4, "four looks and he understands it")
-check("already understand it" in c.do_examine("blueprint twin-turbo V8", s), "a fifth look teaches nothing more")
+check("already know everything" in c.do_examine("blueprint twin-turbo V8", s), "a fifth look teaches nothing more")
 
 print("2. the junkyard has the parts, but only the ones he knows to look for")
 s["location"] = "junkyard"
@@ -193,11 +193,75 @@ s["location"] = "shed"
 c.do_activity("tinker", "", s)
 check(c.owns_part("length of steel tubing"), "random tinkering never grabs a machine part")
 
-print("8. his turn sees the build action")
+print("8. fixer-uppers: he only sees one once he knows enough, and fixing it is up to him")
+
+
+def scavenge_until(want, tries=400):
+    for _ in range(tries):
+        out = c.execute("scavenge", "", s, "quiet")
+        s["energy"] = 90
+        if want(out):
+            return out
+    return ""
+
+
+s["location"], s["skills"]["tinkering"] = "junkyard", 0
+for nb in s["notebooks"].values():
+    nb.clear()
+check(not scavenge_until(lambda o: "could run again" in o, 200), "with no tinkering and no notes, a wreck is just junk")
+s["skills"]["tinkering"] = 4 * 2 ** 2
+check(not scavenge_until(lambda o: "could run again" in o, 200), "tinkering alone isn't enough: he needs to know about engines")
+s["notebooks"].setdefault("other", []).append("an engine needs air, fuel and a spark")
+out = scavenge_until(lambda o: "could run again" in o)
+check("rusted '72 pickup" in out and "pickup" in c.my_plans(s), f"then he notices the pickup ({out[:70]})")
+check("dirtbike" not in s["blueprints"], "one project at a place at a time")
+check("the rusted '72 pickup sitting at the junkyard, which doesn't run" in c.blueprint_note(s),
+      "his turn gets the plain fact, nothing more")
+note = c.blueprint_note(s)
+check("should" not in note and "fix it" not in note, "nothing tells him to fix it")
+s["location"] = "lake"
+check("it's sitting at the junkyard" in c.do_examine("the pickup", s), "he has to be with it to look it over")
+s["location"] = "junkyard"
+out = c.do_examine("the pickup", s)
+check("the engine is seized, so it needs a rebuilt short block" in out, f"each look finds one thing wrong ({out[:70]})")
+check("haven't worked out everything" in c.do_build("fix the pickup", s), "he can't fix it before he knows what's wrong")
+for _ in range(4):
+    c.do_examine("the pickup", s)
+scavenge_until(lambda o: all(c.owns_part(p) for p in c.BLUEPRINTS["pickup"][3]))
+check(all(c.owns_part(p) for p in c.BLUEPRINTS["pickup"][3]), "the junkyard has every part it needs")
+for p in c.BLUEPRINTS["pickup"][3]:
+    c.do_examine(p, s)
+s["skills"]["tinkering"], s["energy"] = 4 * 3 ** 2, 80
+out = c.do_build("fix the pickup", s)
+check(out.startswith("got the rusted '72 pickup running again"), f"he fixes it ({out[:60]})")
+s["energy"] = 80
+out = c.execute("go", "mountain_trail", s, "quiet")
+check(out == "drove the pickup from junkyard to mountain_trail" and s["energy"] == 77, f"the pickup climbs the trail ({out})")
+s["location"] = "junkyard"
+out = scavenge_until(lambda o: "could run again" in o)
+check("old dirt bike" in out, "with the pickup done, the next wreck can turn up")
+s["location"] = "lake"
+check("it's at the junkyard" in c.execute("take_apart", "the dirt bike", s, "quiet"), "stripping happens where it sits")
+s["location"] = "junkyard"
+out = c.execute("take_apart", "the dirt bike", s, "quiet")
+check(out.startswith("stripped the old dirt bike for parts"), f"or he can strip one for parts ({out[:50]})")
+check("dirtbike" not in c.my_plans(s) and not any(p in c.needed_parts(s) for p in c.BLUEPRINTS["dirtbike"][3]),
+      "a stripped wreck is gone, and he stops looking for its parts")
+s["blueprints"]["tractor"], s["location"] = {"learned": 0}, "old_barn"
+check("isn't a place for tearing things up" in c.execute("take_apart", "tractor", s, "quiet"),
+      "nothing gets torn up at the old barn")
+dig, tink = c.know_levels(s, "dig"), c.know_levels(s, "tinker")
+s["built"]["tractor"], s["built"]["lathe"] = {"when": "now"}, {"when": "now"}
+check(c.know_levels(s, "dig") == dig + 2 and c.know_levels(s, "tinker") == tink + 1, "the tractor and lathe help")
+s["built"]["neon"], s["location"] = {"when": "now"}, "diner_roof"
+check(any(c.execute("watch", "", s, "x")[len("sat and watched: "):] in c.NEON_EVENTS for _ in range(20)),
+      "the neon sign glows over the diner roof")
+
+print("9. his turn sees the build action")
 PROMPTS.clear()
 s = c.run_tick(s)
 decision = next((p for p in PROMPTS if '"action"' in p), "")
-check("build (target = a machine you have plans for)" in decision and "Machines you've built:" in decision,
+check("build (target = a machine you have plans for" in decision and "Machines you've built:" in decision,
       "the decision prompt offers build and lists his machines")
 
 os.chdir("/")

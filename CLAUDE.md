@@ -70,6 +70,12 @@ next to the code and are git-ignored.
   `s["built"]` (an installed one has `"in"`) and change things: travel, naps, trains, sky events, skill levels.
   The go-kart needs no blueprint: reading about go-karts anywhere (`kart_idea`) teaches him what it takes. The
   hint is in `library/The_Tinkerers_Handbook.txt`. Random tinkering never grabs a machine part.
+- **Fixer-uppers:** `FIXERS` (pickup, dirt bike, boat, tractor, handcar, lathe, neon sign, chainsaw) live in
+  `BLUEPRINTS` too. Once he knows enough (`fixer_eye`: tinkering 2 plus a notebook note about engines or
+  machines), scavenging can turn one up at its place (`spot_fixer`, one at a time per place). His turn only gets
+  the plain fact that it's there and doesn't run; nothing tells him to fix it. Examining it finds one problem per
+  look; `build` fixes it where it sits; `take_apart` strips it for parts (never at the old barn). Rides
+  (`RIDES`) pick the cheapest working machine for a trip.
 - **Songs:** make_music saves its recipe in `tunes/`, synth patches in `patches/`. The newest 40 songs stay
   as audio; older ones are rebuilt byte-identical when played (`render_song`, `prune_songs`).
 - **Who's around:** after each look at the shared town, `notice_company` notes arrivals, departures and

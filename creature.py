@@ -1287,7 +1287,7 @@ def topics_for(action, place=None):
 def know_levels(s, action):
     """Studying counts like practice: every 5 notes on a subject = 1 bonus skill level for it, up to 3."""
     notes = sum(len(s["notebooks"].get(t, [])) for t in topics_for(action))
-    return min(3, notes // 5) + (2 if working(s, SKILL_MACHINES.get(action)) else 0)   # a machine he built helps too
+    return min(3, notes // 5) + sum(n for k, n in MACHINE_BONUS.get(action, []) if working(s, k))   # machines help too
 
 
 def recall(s, action, text, n=3):
@@ -1579,6 +1579,8 @@ def do_activity(action, target, s):
         return f"wanted to {action.replace('_', ' ')} but you can't do that at the {loc} (you can at: {', '.join(places)})"
     s["energy"] -= cost
     lvl = min(10, (skill_level(s, skill) if skill else 0) + know_levels(s, action))   # practice + study, up to mastery
+    if action == "fish" and loc == "lake" and working(s, "boat"):
+        lvl = min(10, lvl + 2)                         # fishing from the boat, out where the big ones are
 
     if action == "fish":
         bite = {"winter": -0.12, "summer": -0.03}.get(season(), 0) + {"light rain": 0.05, "cloudy": 0.04, "rain": 0.03}.get(s.get("weather"), 0)
@@ -1893,6 +1895,41 @@ BLUEPRINTS = {   # key: (words in the blueprint's name, what it is, built at, pa
 }
 IN_HEAD = {"gokart"}   # plans he can know without a blueprint
 KART = re.compile(r"\bgo[- ]?karts?\b", re.I)
+# Fixer-uppers: broken things he can come across while scavenging, once he knows enough to see they could run again
+# (fixer_eye). Nothing tells him to fix them. Examining one finds one thing wrong per look; the parts are at the
+# junkyard; he fixes it where it sits. They aren't gifts, so he can strip one for parts instead (not at the old barn).
+FIXERS = {   # key: (words, what it is, where it sits, [(what's wrong, the part that fixes it)], tinkering level)
+    "pickup":   ("pickup", "rusted '72 pickup", "junkyard",
+                 [("the engine is seized", "rebuilt short block"), ("the tires are rotted flat", "set of truck tires"),
+                  ("the battery is dead", "truck battery"), ("the brake lines are rusted through", "coil of brake line")], 3),
+    "dirtbike": ("dirt bike", "old dirt bike", "junkyard",
+                 [("the carburetor is gummed up", "motorcycle carburetor"), ("the chain is rusted solid", "drive chain"),
+                  ("the spark plug wire is chewed through", "spark plug wire")], 2),
+    "boat":     ("dinghy", "dinghy with a dead outboard motor", "lake",
+                 [("the outboard's water pump is shot", "outboard impeller"), ("the fuel line is cracked", "outboard fuel line"),
+                  ("the hull has a hole in it", "fiberglass patch kit")], 2),
+    "tractor":  ("tractor", "seized-up farm tractor", "old_barn",
+                 [("the engine is seized", "tractor cylinder head"), ("the hydraulics leak", "hydraulic hose"),
+                  ("the radiator is cracked", "tractor radiator"), ("a rear tire is split", "big tractor tire")], 3),
+    "handcar":  ("handcar", "rusted rail handcar", "rail_yard",
+                 [("the pump handle's pivot is frozen", "pivot bushing"), ("a wheel bearing is gone", "rail wheel bearing"),
+                  ("the brake shoe is worn away", "brake shoe")], 2),
+    "lathe":    ("lathe", "broken metal lathe", "machine_shop",
+                 [("the drive belt snapped", "lathe drive belt"), ("the motor won't turn", "electric motor"),
+                  ("the chuck key is missing", "chuck key")], 3),
+    "neon":     ("neon sign", "dead neon sign", "diner_roof",
+                 [("a tube is broken", "neon tube"), ("the transformer is burnt out", "neon transformer")], 2),
+    "chainsaw": ("chainsaw", "old chainsaw", "shed",
+                 [("the chain is dull", "chainsaw chain"), ("the pull cord snapped", "pull cord"),
+                  ("the carburetor is gummed up", "small engine carburetor")], 2),
+}
+PROBLEM = {}
+for _k, (_w, _n, _at, _probs, _lvl) in FIXERS.items():
+    BLUEPRINTS[_k] = (_w, _n, _at, [p for _, p in _probs], [], _lvl)
+    PROBLEM.update({p: why for why, p in _probs})
+MECHANICAL = re.compile(r"\b(engine|motor|machine|gear|piston|carburet|mechanic|crank)", re.I)
+NEON_EVENTS = ["the neon sign buzzes pink over the parking lot", "the neon sign flickers on as the sky goes dark",
+               "moths circle the glowing neon sign"]
 MACHINE_DOES = {   # what a finished machine changes in his life
     "valve": "a train always comes when you leave something on the rail",
     "wheel": "its forge makes you better at sifting the creek gravel",
@@ -1907,10 +1944,28 @@ MACHINE_DOES = {   # what a finished machine changes in his life
     "camshaft": "it's the heart of an engine: something bigger needs it",
     "bigblock": "it's an engine: something bigger could run on it",
     "gearbox": "it's a gearbox: something bigger needs it",
+    "pickup": "you can drive it anywhere in town, even up the mountain trail (not the summit), for little energy",
+    "dirtbike": "you ride it around town and up the mountain trail (not the summit) for less energy than flying",
+    "boat": "you can fish from the boat out on the lake: more bites, bigger fish",
+    "tractor": "you can dig with it, so digging goes a lot better",
+    "handcar": "you pump it down the rails, so trips to and from the rail yard are cheap",
+    "lathe": "you can turn metal on it, so your tinkering comes out a bit better",
+    "neon": "it glows over the diner roof again",
+    "chainsaw": "you can cut through the junk at the old barn and the mountain trail, so scavenging there goes better",
 }
 SKY_EVENTS = ["the radio telescope picks up a pulsar ticking like a clock", "the dish hums with the hiss of the Milky Way",
               "a satellite's beep crosses the sky through the receiver", "the sun crackles loud in the radio telescope"]
-SKILL_MACHINES = {"tinker": "welder", "sift": "wheel", "scavenge": "jaws"}   # +2 levels once built
+MACHINE_BONUS = {"tinker": [("welder", 2), ("lathe", 1)], "sift": [("wheel", 2)], "scavenge": [("jaws", 2)],
+                 "dig": [("tractor", 2)]}   # skill levels a working machine adds
+MOUNTAIN = {"mountain_trail", "summit"}
+RIDES = {   # machine: (energy a trip costs, how he says it, which trips it can make)
+    "cablecar": (2, "rode the cable car", lambda a, b: {a, b} == MOUNTAIN),
+    "hotrod":   (2, "drove the hot rod", lambda a, b: not {a, b} & MOUNTAIN),
+    "handcar":  (2, "pumped the handcar down the rails", lambda a, b: "rail_yard" in (a, b) and not {a, b} & MOUNTAIN),
+    "pickup":   (3, "drove the pickup", lambda a, b: "summit" not in (a, b)),
+    "gokart":   (4, "drove the go-kart", lambda a, b: not {a, b} & MOUNTAIN),
+    "dirtbike": (4, "rode the dirt bike", lambda a, b: "summit" not in (a, b)),
+}
 
 
 def built(s, key):
@@ -1925,7 +1980,51 @@ def working(s, key):
 def my_plans(s):
     """The machines he has plans for: his blueprints from Caelan, plus anything he's worked out in his head."""
     mine = [k for k in dict.fromkeys(blueprint_of(i) for i in hoard()["items"]) if k]
-    return mine + [k for k in IN_HEAD if s.get("blueprints", {}).get(k)]
+    return mine + [k for k in list(IN_HEAD) + list(FIXERS) if k in s.get("blueprints", {})
+                   and not s["blueprints"][k].get("stripped")]
+
+
+def fixer_eye(s):
+    """Whether he knows enough to look at a broken machine and see it could run again: some tinkering, and
+    something in his notebooks about engines or machines."""
+    lvl = skill_level(s, "tinkering") + min(3, sum(len(s["notebooks"].get(t, [])) for t in topics_for("tinker")) // 5)
+    return lvl >= 2 and any(MECHANICAL.search(n) for nb in s["notebooks"].values() for n in nb)
+
+
+def spot_fixer(s):
+    """Scavenging, he can come across a broken machine worth fixing: one at a time per place."""
+    loc, plans = s["location"], s.get("blueprints", {})
+    here = [k for k, f in FIXERS.items() if f[2] == loc]
+    if not here or not fixer_eye(s) or random.random() > 0.12:
+        return None
+    if any(k in plans and not built(s, k) and not plans[k].get("stripped") for k in here):
+        return None                                    # still one sitting here
+    k = next((k for k in here if k not in plans), None)
+    if k:
+        plans[k] = {"learned": 0, "found": now()}
+        s["blueprints"] = plans
+    return k
+
+
+def fixer_named(s, target):
+    t = str(target or "").lower()
+    return next((k for k in FIXERS if k in my_plans(s) and (FIXERS[k][0] in t or FIXERS[k][1].lower() in t)), None)
+
+
+def strip_fixer(s, key):
+    _, name, at, _, _ = FIXERS[key]
+    if built(s, key):
+        return f"thought about stripping the {name}, but it runs now"
+    if s["location"] != at:
+        return f"wanted to strip the {name} for parts, but it's at the {at.replace('_', ' ')}"
+    if at == "old_barn":
+        return f"thought about stripping the {name}, but the old barn isn't a place for tearing things up"
+    s["blueprints"][key]["stripped"] = True
+    got = random.sample(FINDS["junkyard"], 2)
+    for g in got:
+        add_item(s, g)
+    s["energy"] -= 4
+    return f"stripped the {name} for parts and came away with {a_an(got[0])} and {a_an(got[1])}" + train(s, "tinkering", 1)
 
 
 def kart_idea(s, text):
@@ -1958,6 +2057,8 @@ def blueprint_of(item):
 def blueprint_steps(key):
     """What studying it reveals, in order: each part, each machine it needs, then how it goes together."""
     _, name, at, parts, needs, _ = BLUEPRINTS[key]
+    if key in FIXERS:
+        return [f"{PROBLEM[p]}, so it needs {a_an(p)}" for p in parts] + ["that's everything wrong with it"]
     return ([f"calls for {a_an(p)}" for p in parts] + [f"needs a working {BLUEPRINTS[n][1]} built into it" for n in needs]
             + [f"gets built at the {at.replace('_', ' ')}, and you understand how it all goes together"])
 
@@ -1970,7 +2071,7 @@ def needed_parts(s):
     """Parts he's worked out a blueprint calls for and doesn't have yet (for blueprints not built)."""
     out = []
     for key, st in s.get("blueprints", {}).items():
-        if not built(s, key):
+        if not built(s, key) and not st.get("stripped"):
             out += [p for p in BLUEPRINTS[key][3][:st.get("learned", 0)] if not owns_part(p) and p not in out]
     return out
 
@@ -1978,15 +2079,17 @@ def needed_parts(s):
 def study_blueprint(s, item, key):
     st = s.setdefault("blueprints", {}).setdefault(key, {"learned": 0})
     steps, name = blueprint_steps(key), BLUEPRINTS[key][1]
+    what = f"the {name}" if key in FIXERS else f"the blueprint of the {name}"
     if st["learned"] >= len(steps):
-        return f"looked over the blueprint of the {name} again, but you already understand it inside and out"
+        return f"looked over {what} again, but you already know everything about it"
     fact = steps[st["learned"]]
     st["learned"] += 1
-    lore = s["item_lore"].setdefault(item_key(item), {"facts": [], "done": False})
-    lore["facts"].append(f"the {name} {fact}")
-    lore["done"] = st["learned"] >= len(steps)
+    if item:
+        lore = s["item_lore"].setdefault(item_key(item), {"facts": [], "done": False})
+        lore["facts"].append(f"the {name} {fact}")
+        lore["done"] = st["learned"] >= len(steps)
     s["energy"] = min(100, s["energy"] + 2)
-    return f"studied the blueprint of the {name} and worked out that it {fact}" + train(s, "tinkering", 1)
+    return f"studied {what} and worked out that {'' if key in FIXERS else 'it '}{fact}" + train(s, "tinkering", 1)
 
 
 def do_build(target, s):
@@ -2003,9 +2106,11 @@ def do_build(target, s):
     if built(s, key):
         return f"thought about building the {name}, but you already built it"
     if s.get("blueprints", {}).get(key, {}).get("learned", 0) < len(blueprint_steps(key)):
-        return f"wanted to build the {name}, but you don't understand its blueprint well enough yet"
+        return (f"wanted to fix the {name}, but you haven't worked out everything that's wrong with it yet" if key in FIXERS
+                else f"wanted to build the {name}, but you don't understand its blueprint well enough yet")
     if s["location"] != at:
-        return f"wanted to build the {name}, but it gets built at the {at.replace('_', ' ')}"
+        return (f"wanted to fix the {name}, but it's sitting at the {at.replace('_', ' ')}" if key in FIXERS
+                else f"wanted to build the {name}, but it gets built at the {at.replace('_', ' ')}")
     missing = [p for p in parts if not owns_part(p)]
     if missing:
         return f"wanted to build the {name}, but you're still missing: {', '.join(missing)}"
@@ -2024,6 +2129,8 @@ def do_build(target, s):
         s["built"][n]["in"] = key                       # installed in this one
     s.setdefault("built", {})[key] = {"when": now()}
     s["energy"] -= 10
+    if key in FIXERS:
+        return f"got the {name} running again! Now {MACHINE_DOES[key]}" + train(s, "tinkering", 4)
     plan = "your own plan" if key in IN_HEAD else "Caelan's blueprint"
     return f"built the {name} from {plan}! Now {MACHINE_DOES[key]}" + train(s, "tinkering", 4)
 
@@ -2035,23 +2142,34 @@ def blueprint_note(s):
         if built(s, k):
             continue
         st = s.get("blueprints", {}).get(k, {}).get("learned", 0)
-        if not st:
-            fresh += 1
-            continue
         _, name, at, parts, needs, level = BLUEPRINTS[k]
+        if k in FIXERS:
+            name = f"the {name} sitting at the {at.replace('_', ' ')}, which doesn't run"
+        if not st:
+            if k in FIXERS:
+                lines.append(name)
+            else:
+                fresh += 1
+            continue
         known = parts[:st]
         have = [p for p in known if owns_part(p)]
         lines.append(f"{name} ({min(st, len(blueprint_steps(k)))} of {len(blueprint_steps(k))} things worked out; "
-                     f"calls for {', '.join(known)}; you have {', '.join(have) or 'none of them'})")
+                     f"{'needs' if k in FIXERS else 'calls for'} {', '.join(known)}; you have {', '.join(have) or 'none of them'})")
     machines = [f"{BLUEPRINTS[k][1]} ({MACHINE_DOES[k]})" for k in s.get("built", {}) if working(s, k)]
     if len(lines) > 3:                                     # keeps the prompt small: the newest three, and a count
         lines = lines[-3:] + [f"{len(lines) - 3} more you've started on"]
-    return (("Machines you have plans for: " + "; ".join(lines) + (f"; and {fresh} blueprints you haven't studied yet" if fresh else "") + ".\n"
+    return (("Machines you have plans for or know about: " + "; ".join(lines) + (f"; and {fresh} blueprints you haven't studied yet" if fresh else "") + ".\n"
              if lines or fresh else "")
             + ("Machines you've built: " + "; ".join(machines) + ".\n" if machines else ""))
 
 
 def do_examine(target, s):
+    fix = fixer_named(s, target)
+    if fix:
+        _, name, at, _, _ = FIXERS[fix]
+        if s["location"] != at:
+            return f"wanted to look over the {name}, but it's sitting at the {at.replace('_', ' ')}"
+        return study_blueprint(s, None, fix)
     hit = match_items(s, target, 1, allow_gifts=True) if target else []
     if not hit:
         return f"looked around for {target or 'something to study'} but couldn't find it in your collection"
@@ -2729,13 +2847,10 @@ def execute(action, target, s, event):
             cost = 3                                     # gliding down the mountain is easy
         if target in ("summit", "mountain_trail") and (s.get("weather") == "snow" or season() == "winter"):
             cost += 8                                    # fighting through snow
-        ride = next((k for k in ("hotrod", "gokart") if working(s, k)), None)
-        if cable:
-            cost, how = 2, "rode the cable car"
-        elif ride and target in PLACES and not {loc, target} & {"mountain_trail", "summit"}:
-            cost, how = {"hotrod": 2, "gokart": 4}[ride], f"drove the {BLUEPRINTS[ride][1]}"
-        else:
-            how = "flew"
+        how = "flew"
+        rides = [(c, h) for k, (c, h, can) in RIDES.items() if working(s, k) and target in PLACES and can(loc, target)]
+        if rides and min(rides)[0] < cost:
+            cost, how = min(rides)
         s["location"] = target
         s["energy"] -= cost
         return f"{how} from {loc} to {target}"
@@ -2744,7 +2859,12 @@ def execute(action, target, s, event):
         part = junk_part(s)
         if part:
             return f"dug through the junkyard and found {a_an(part)}, one of the parts you've been looking for"
-        if loc in FINDS and random.random() < 0.7 + 0.05 * know_levels(s, "scavenge"):
+        fix = spot_fixer(s)
+        if fix:
+            return (f"scavenged around the {loc} and came across {a_an(FIXERS[fix][1])}. Looking it over, you can tell "
+                    "it could run again if somebody fixed it")
+        saw = 0.15 if loc in ("old_barn", "mountain_trail") and working(s, "chainsaw") else 0
+        if loc in FINDS and random.random() < 0.7 + 0.05 * know_levels(s, "scavenge") + saw:
             item = random.choice(FINDS[loc])
             adj = random.choice(FIND_ADJ)
             if random.random() < 0.3 and adj not in item:
@@ -2769,6 +2889,8 @@ def execute(action, target, s, event):
         s["energy"] = min(100, s["energy"] + 5)
         if loc == "summit" and working(s, "telescope") and random.random() < 0.6:
             event = random.choice(SKY_EVENTS)
+        if loc == "diner_roof" and working(s, "neon") and random.random() < 0.5:
+            event = random.choice(NEON_EVENTS)
         return f"sat and watched: {event}"
     if action == "nap":
         warm = loc == "diner_roof" and working(s, "turbine")
@@ -2784,6 +2906,8 @@ def execute(action, target, s, event):
             return "tucked into the nest for the night"
         s["asleep_until"] = time.time() + 3600
         return f"curled up for an uncomfortable sleep at the {loc}"
+    if action == "take_apart" and fixer_named(s, target):
+        return strip_fixer(s, fixer_named(s, target))
     if action in ACTIVITIES:
         return do_activity(action, target, s)
     if action == "examine":
@@ -3272,7 +3396,7 @@ watch, nap, sleep, rearrange_collection (target = treasures to admire; at your n
 read (target = a book), look_up (target = anything you're curious about, looked up in the big book of everything),
 reminisce (target = optional: a memory to look for; pages back through your memory book of your whole life since you hatched),
 examine (target = anything in your collection or hoard, to study it closely and figure out something new about it; things you understand completely don't need examining again),
-{"play_synth (target = what the patch is about; your modular synthesizer lives in your nest, so only there; synthesis level " + str(skill_level(s, "synthesis")) + "), " if has_synth() else ""}{talk_option}{"build (target = a machine you have plans for), " if my_plans(s) else ""}plus the activities above (only where they're available).
+{"play_synth (target = what the patch is about; your modular synthesizer lives in your nest, so only there; synthesis level " + str(skill_level(s, "synthesis")) + "), " if has_synth() else ""}{talk_option}{"build (target = a machine you have plans for, or a broken one you know about, to fix it), " if my_plans(s) else ""}plus the activities above (only where they're available).
 Do whatever YOU feel like. Respond ONLY with JSON:
 {{"thought": "one sentence, first person", "action": "...", "target": "..."}}"""
 
