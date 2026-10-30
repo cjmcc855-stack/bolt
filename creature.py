@@ -3405,6 +3405,9 @@ Do whatever YOU feel like. Respond ONLY with JSON:
     if s["energy"] <= 8 and action not in ("nap", "sleep", "forage", "fish", "watch", "think", "read", "reminisce"):
         d["thought"] = f"I wanted to {action.replace('_', ' ')}, but I'm too worn out to keep going."
         action, d["target"] = "nap", ""           # he collapses into a nap whether he likes it or not
+    if (action == "make_music" and s["location"] == "nest" and has_synth()
+            and re.search(r"\bsynth|\bmodular\b|\bpatch(es|ing)?\b", str(d.get("thought") or ""), re.I)):
+        action = "play_synth"                      # he meant the synth: the model mixes up the two music choices
     target = str(d.get("target") or "").strip()
     thought = str(d.get("thought") or "...")
     outcome = execute(action, target, s, event).strip().rstrip(".")

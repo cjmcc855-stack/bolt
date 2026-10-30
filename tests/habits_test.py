@@ -7,6 +7,7 @@ habits_test.py - checks three of Bolt's habits:
   - roosting: at night he flies home and sleeps, with no model calls, until a human wakes him
   - songs: only the newest are kept as audio; older ones play back byte-identical from their recipes,
     and his early songs (no recipe) are never touched
+  - synth: when his thought is about the synth but he picks the song action at his nest, he plays the synth
 
     python tests/habits_test.py [path/to/bolt_folder]
 
@@ -35,6 +36,7 @@ FLOWERY = ("The creek under the moonlight is a serene and magical place. The wat
            "and the shadows dance around it. It's a perfect spot to let your mind wander.")
 SAY = {"reply": FLOWERY, "rewrite": "Kraa. Cold, loud, moon on the water. You out there?", "broken": False}
 TUNE = {"n": 0}
+DECIDE = {"thought": "hm", "action": "think", "target": ""}
 
 
 def check(ok, what):
@@ -56,7 +58,7 @@ def brain(prompt, json_mode=True, temp=0.9, **kw):
         return json.dumps({"title": f"tune {TUNE['n']}", "scale": "A minor", "bpm": 100 + TUNE["n"],
                            "notes": [f"{'CDEFGAB'[(TUNE['n'] + i) % 7]}4:0.5" for i in range(8)]})
     if '"action"' in prompt:
-        return json.dumps({"thought": "hm", "action": "think", "target": ""})
+        return json.dumps(DECIDE)
     if "How did it honestly make you feel" in prompt:
         return json.dumps({"feeling": 0, "reflection": "fine"})
     return "{}"
@@ -175,6 +177,33 @@ if c.synth is not None:
         orig = f.read()
     os.remove("songs/00099_test_patch.wav")
     check(c.render_song("00099_test_patch.wav") == orig, "a synth song plays back byte-identical from its patch")
+
+print("5. when he means the synth, he plays the synth")
+PLAYED = []
+c.do_synth = lambda target, s: PLAYED.append("synth") or "patched the modular synth"
+c.do_music = lambda target, s: PLAYED.append("song") or "made a song"
+c.add_item(s, "a modular synthesizer (from Caelan)")
+s["location"], s["energy"], s["asleep_until"] = "nest", 80, 0
+
+
+def turn(thought):
+    global s
+    DECIDE.update(thought=thought, action="make_music")
+    PLAYED.clear()
+    s = c.run_tick(s)
+    s["location"], s["energy"], s["asleep_until"] = "nest", 80, 0
+    return PLAYED
+
+
+check(turn("Let's see what happens when I play around with the patch on the synthesizer.") == ["synth"],
+      "a synth thought with the song action plays the synth")
+check(turn("I'll hum a little song about the creek.") == ["song"], "a plain song stays a song")
+s["location"] = "lake"
+DECIDE.update(thought="I want to patch the modular synth", action="make_music")
+PLAYED.clear()
+s = c.run_tick(s)
+check(PLAYED == ["song"], "away from the nest (where the synth lives) it stays a song")
+DECIDE.update(thought="hm", action="think")
 
 os.chdir("/")
 shutil.rmtree(WORK, ignore_errors=True)
