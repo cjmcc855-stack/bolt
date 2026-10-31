@@ -25,6 +25,10 @@ next to the code and are git-ignored.
 6. **Don't touch the GPU safety:** pause at 80°C, emergency shutdown at 87°C (`temp_watchdog`).
 7. **Don't dictate his learning.** What he does should come from what he's read, learned and felt. Foreign
    words (he picked up some Japanese) are fine. Tell him facts plainly (like `rut_note`) instead of ordering him.
+   Never tell him how to feel ("repetition gets boring", "you're feeling nostalgic") or what to make ("make it
+   different", "use it"): give the fact ("you've done this 3 times in your last 8 moves", "words you've been
+   using a lot lately: …") and let him decide. Talk manners (plain talk, don't hijack the conversation) and
+   physical limits (tired, night) are fine. `habits_test.py` section 5 checks his prompts for steering.
 8. **Standard library only** (Python 3.10+, runs on Windows). No pip installs for Bolt.
 9. **Public repo:** no IP addresses, tokens, or private family details in code, docs or commit messages.
 

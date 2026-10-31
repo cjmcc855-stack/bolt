@@ -935,7 +935,7 @@ def do_draw(subject, s):
     raw = call_llm(
         f"You feel like drawing: {subject}. Draw it as an SVG picture, viewBox 0 0 200 200, using rect, circle, "
         f"ellipse, polygon, line and path shapes with fill colors. Draw back to front: background first. "
-        + (f"What you know that could help this drawing: {lessons}. Use it. " if lessons else "")
+        + (f"What you know that could help this drawing: {lessons}. " if lessons else "")
         + f"Your drawing skill is level {lvl}: use about {6 + lvl * 3} to {12 + lvl * 5} shapes. "
         f"Output ONLY the <svg>...</svg> code.",
         json_mode=False, temp=0.8)
@@ -993,10 +993,10 @@ def do_music(subject, s):
     data = parse_json(call_llm(
         f"You're making a little synth tune about: {subject}. Your synth plays one note at a time. "
         f"Songs you've already made: {', '.join(s['songs'][-12:]) or 'none'}. "
-        + (f"Do not use these overused words in the title: {', '.join(overused_words(s))}. " if overused_words(s) else "")
-        + (f"What you know that could help this song: {lessons}. Use it. " if lessons else "")
+        + (f"Words you've been using a lot lately: {', '.join(overused_words(s))}. " if overused_words(s) else "")
+        + (f"What you know that could help this song: {lessons}. " if lessons else "")
         + f"Your songwriting skill is level {lvl}. "
-        "Make this one actually different: new title, new mood, new key or scale, new rhythm, new tempo. Respond ONLY with JSON: "
+        "Respond ONLY with JSON: "
         '{"title": "...", "scale": "e.g. A minor", "bpm": <60 to 160>, "notes": ["C4:0.5", "E4:0.5", "rest:1", ...]} '
         f"{12 + lvl * 3} to {24 + lvl * 4} notes, note names like C4 or F#3, number is beats."))
     notes = data.get("notes") if isinstance(data.get("notes"), list) else []
@@ -1126,11 +1126,11 @@ def do_synth(subject, s):
         + (f"Patch cables (up to {synth.MAX_CABLES}) from {', '.join(sources)} to {', '.join(synth.CABLE_DESTS)}, "
            "amount -1..1.\n" if sources else "You haven't learned patch cables yet.\n")
         + f"Your synthesis level is {lvl}" + (f"; still locked: {', '.join(m for m in synth.MODULE_ORDER + ['advanced cables'] if m not in have)}" if len(have) < 13 else "") + ".\n"
-        + (f"What you know that could help: {lessons}. Use it.\n" if lessons else "")
+        + (f"What you know that could help: {lessons}.\n" if lessons else "")
         + (f"You're going back to your patch '{base['title']}' to experiment. Here it is: "
            f"{json.dumps({k: base[k] for k in ('bpm', 'division', 'root', 'scale', 'octave', 'steps', 'modules', 'cables')})}. "
            "Change one to three things on purpose, to hear what they do. Give it a new title.\n" if base else
-           (f"Patches you've already made: {', '.join(s.get('synth_patches', [])[-10:])}. Make this one different. "
+           (f"Patches you've already made: {', '.join(s.get('synth_patches', [])[-10:])}. "
             "(To experiment on an old one later, play_synth with target 'tweak <its title>'.)\n" if s.get("synth_patches") else ""))
         + "Respond ONLY with JSON like: {\"title\": \"...\", \"bpm\": 60-160, \"division\": 8 or 16, \"root\": \"A\", "
         "\"scale\": \"minor|major|dorian|phrygian|lydian|mixolydian|pentatonic|minor pentatonic|blues|chromatic\", "
@@ -1663,13 +1663,12 @@ def do_activity(action, target, s):
         r = parse_json(call_llm(
             f"You're tinkering at the {loc}, combining a {parts[0]} and a {parts[1]} into something new. "
             f"Your tinkering skill is level {lvl}. "
-            + (f"What you know that could help: {'; '.join(recall(s, 'tinker', parts[0] + ' ' + parts[1], 6))}. Use it. "
+            + (f"What you know that could help: {'; '.join(recall(s, 'tinker', parts[0] + ' ' + parts[1], 6))}. "
                if recall(s, 'tinker', parts[0] + ' ' + parts[1], 6) else "")
             + f"The thing is made ONLY of the {base_name(parts[0])} and the {base_name(parts[1])}: it can only do what those "
             "two parts could really do together. Nothing else you own is part of it. "
-            + (f"Things you've already built: {'; '.join(built[-8:])}. Make something with a DIFFERENT purpose than "
-               "those, not another version of the same idea. " if built else "")
-            + "Make it something that actually works and has a purpose. What did you make? Respond ONLY with JSON: "
+            + (f"Things you've already built: {'; '.join(built[-8:])}. " if built else "")
+            + "What did you make? Respond ONLY with JSON: "
             '{"name": "short name of the thing you made", "what_it_does": "one short sentence"}', temp=0.9))
         name = re.sub(r"[()|]", "", str(r.get("name") or "strange contraption")).strip()[:60] or "strange contraption"
         s["inventions"] = (built + [f"{name} ({clip(r.get('what_it_does', ''), 80).rstrip('.')})"])[-30:]
@@ -2405,8 +2404,8 @@ def stuck_note(s):
 
 
 def rut_note(s):
-    """If he's done the same thing several turns running and it's felt bad, tell him plainly. What to do
-    instead is up to him."""
+    """If he's done the same thing several turns running, tell him plainly, with how it's felt if that's been
+    bad. Only facts: how to feel about it and what to do next are up to him."""
     acts, feels = s["recent_actions"], s.get("recent_feelings", [])
     if not acts:
         return ""
@@ -2414,11 +2413,11 @@ def rut_note(s):
     while n < len(acts) and acts[-1 - n] == acts[-1]:
         n += 1
     lately = feels[-min(n, len(feels)):] if feels else []
-    if n < 3 or len(lately) < 3 or sum(lately) >= 0:
-        return ""
-    how = "worse" if lately[-1] < 0 else "flat"
-    return (f"You've done {acts[-1].replace('_', ' ')} {n} turns in a row now, and lately it's felt {how} "
-            f"(feelings: {', '.join(f'{f:+d}' for f in lately[-5:])}). Doing it again probably won't feel any different.")
+    streak = f"You've done {acts[-1].replace('_', ' ')} {n} turns in a row now"
+    if n >= 3 and len(lately) >= 3 and sum(lately) < 0:
+        how = "worse" if lately[-1] < 0 else "flat"
+        return f"{streak}, and lately it's felt {how} (feelings: {', '.join(f'{f:+d}' for f in lately[-5:])})."
+    return streak + "." if n >= 4 else ""
 
 
 def is_night():
@@ -2801,7 +2800,7 @@ def do_talk_to(target, s):
         f"You start talking to {name}: whatever's actually on your mind (something you did or found, something you "
         f"wonder about, or a question for them). Something new, not what you've already said to them. "
         "1 or 2 short sentences, plain, like a bird talking to a friend, not a poem. "
-        + (f"Don't use these overused words: {', '.join(crutch)}. " if crutch else "")
+        + (f"Words you've been using a lot lately: {', '.join(crutch)}. " if crutch else "")
         + f"Output only what {NAME} says, no quotes, no name label.", json_mode=False, temp=0.85)
     line = clip(plainer(s, re.sub(rf"^\*?\*?{NAME}\*?\*?:\s*", "", str(line)).strip().strip('"')), 300)
     if not line:
@@ -3125,7 +3124,7 @@ def compose_reply(s, heard, creatures, loc, event, gifts, ate):
         + ("End with a question about what they just said. " if ask else "Do NOT ask a question this time; just respond. ")
         + "1 to 3 short sentences. Talk like a real bird talking to a friend, plain and natural, not like a poem. "
         "Use one of your favorite words only if it fits naturally. "
-        + (f"You've been overusing these words lately, so don't use them: {', '.join(crutch)}. " if crutch else "")
+        + (f"Words you've been using a lot lately: {', '.join(crutch)}. " if crutch else "")
         + (f"Do NOT start the way your recent replies started: {' | '.join(r[:25] for r in last_replies)}. " if last_replies else "")
         + ("They wrote to you in another language, so answer in that same language. " if FOREIGN.search(msgs) else "")
         + f"Output only what {NAME} says, no quotes, no name label.", json_mode=False, temp=0.85,
@@ -3187,7 +3186,7 @@ def react_to_gifts(s, gifts, ate):
         "React to exactly THIS, calling it by what it is. It's new; it's not anything else you already own. "
         "If you don't know what it is, say so, or guess from what you can see. 1 or 2 short sentences, like a bird "
         "talking to a friend, not a poem. "
-        + (f"Don't use these overused words: {', '.join(crutch)}. " if crutch else "")
+        + (f"Words you've been using a lot lately: {', '.join(crutch)}. " if crutch else "")
         + f"Output only what {NAME} says, no quotes, no name label.", json_mode=False, temp=0.8)
     return clip(plainer(s, re.sub(rf"^\*?\*?{NAME}\*?\*?:\s*", "", out).strip().strip('"')), 300)
 
@@ -3361,7 +3360,7 @@ Right now: {event}.
 {town_note}
 {"You just got gifts: " + "; ".join(gifts) + "." if gifts else ""}{(" You picked up and stashed: " + ", ".join(picked) + ".") if picked else ""}
 {("You ate: " + ", ".join(ate) + ".") if ate else ""}
-{("Words you've been overusing (find fresh ones): " + ", ".join(overused_words(s))) if overused_words(s) else ""}
+{("Words you've been using a lot lately: " + ", ".join(overused_words(s))) if overused_words(s) else ""}
 {("You were just talking with someone: " + said + f'. You answered: "{reply}"') if reply else ""}
 Energy: {s['energy']}/100. Mood: {s['mood']} (-5 awful to 5 great).
 What you know about yourself: {s['likes']}
@@ -3375,7 +3374,6 @@ On your display shelf: {", ".join(s['collection']) or "empty"}
 {"You're exhausted and can barely keep your eyes open. You need to nap, sleep, or eat soon." if s['energy'] < 20
   else "You're getting tired. Climbing and digging cost a lot; napping, watching, reading, and eating restore you." if s['energy'] < 40 else ""}
 {"It's the middle of the night. Crows roost at night; you're sleepy. Sleeping in your nest gets you a full night's rest." if is_night() else ""}
-{"You're feeling a little nostalgic." if (loc == "nest" or s['mood'] < 0) and random.random() < 0.3 else ""}
 Words you've picked up: {", ".join(s['words'][-10:]) or "none yet"}
 Things you know about this place: {"; ".join(relevant_notes(s, loc)) or "nothing yet"}
 Your notebooks: {", ".join(f"{k} ({len(v)} notes)" for k, v in s["notebooks"].items() if v) or "empty"}
@@ -3423,10 +3421,10 @@ Do whatever YOU feel like. Respond ONLY with JSON:
     r = parse_json(call_llm(
         f"You just did this: {outcome}. Your thought beforehand: {thought}\n"
         + (f"Things you know about this: {'; '.join(relevant_notes(s, s['location'], action, outcome, 3))}\n" if relevant_notes(s, s['location'], action, outcome, 3) else "")
-        + (f"You've done this {repeats} times in your last 8 moves. Repetition gets boring.\n" if repeats >= 2 else "")
+        + (f"You've done this {repeats} times in your last 8 moves.\n" if repeats >= 2 else "")
         + ("That didn't actually happen: you didn't get to do it.\n" if didnt_happen(outcome) else "")
         + "How did it honestly make you feel? Use the whole scale: most moments are just okay (0), "
-        "boring or repetitive things are -1, bad things are -2, nice things are +1, and +2 is only for truly special moments. "
+        "things that went a bit wrong are -1, bad things are -2, nice things are +1, and +2 is only for truly special moments. "
         'Respond ONLY with JSON: {"feeling": <integer -2 to 2>, "reflection": "one short first-person sentence"}', temp=0.7))
     try:
         feeling = int(clamp(int(r.get("feeling", 0)), -2, 2))

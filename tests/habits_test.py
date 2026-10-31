@@ -98,7 +98,10 @@ s["recent_feelings"] = [-1, -1, -1, -1]
 note = c.rut_note(s)
 check("fish 4 turns in a row" in note and "worse" in note, "a bad streak is named plainly")
 s["recent_feelings"] = [1, 0, 1, 1]
-check(c.rut_note(s) == "", "a streak he's enjoying isn't")
+check(c.rut_note(s) == "You've done fish 4 turns in a row now.", "a streak he's enjoying is just counted, no feelings attached")
+s["recent_actions"] = ["fish"] * 3
+check(c.rut_note(s) == "", "three good ones in a row isn't worth mentioning")
+s["recent_actions"] = ["fish"] * 4
 s["recent_actions"] = ["fish", "fish"]
 s["recent_feelings"] = [-1, -1]
 check(c.rut_note(s) == "", "two in a row isn't a rut yet")
@@ -178,7 +181,37 @@ if c.synth is not None:
     os.remove("songs/00099_test_patch.wav")
     check(c.render_song("00099_test_patch.wav") == orig, "a synth song plays back byte-identical from its patch")
 
-print("5. when he means the synth, he plays the synth")
+print("5. he's told facts, never how to feel or what to make")
+STEER = ["Repetition gets boring", "repetitive things are -1", "nostalgic", "won't feel any different", "Use it",
+         "Make this one", "DIFFERENT purpose", "has a purpose", "overusing", "Don't use these", "find fresh ones"]
+s["location"], s["mood"], s["energy"], s["asleep_until"] = "nest", -2, 80, 0
+s["recent_actions"], s["recent_feelings"] = ["think"] * 6, [-1] * 6
+s["notebooks"].setdefault("music", []).append("minor keys sound lonely")
+s["notebooks"].setdefault("drawing", []).append("draw the background first")
+s["notebooks"].setdefault("machines", []).append("a hook and a bottle cap can make a lever")
+s["inventions"] = ["wire hook (grabs things)"]
+s["songs"] = ["Creek Song", "Creek Song II"]
+s["convo"] = [{"who": "Caelan", "said": "hi", "reply": "the river river river is loud, river"}] * 4
+PROMPTS.clear()
+for _ in range(8):
+    s = c.run_tick(s)
+    s["location"], s["mood"], s["energy"], s["asleep_until"] = "nest", -2, 80, 0
+c.inbox(c.TALK, "Caelan|how's the river?")
+s = c.run_step(c.reply_now, s)
+c.do_music("the creek", s)
+c.do_draw("the creek", s)
+s["location"] = "shed"
+c.add_item(s, "hook")
+c.add_item(s, "bottle cap")
+c.do_activity("tinker", "hook and bottle cap", s)
+said = [w for w in STEER if any(w in p for p in PROMPTS)]
+check(not said, f"no prompt tells him how to feel or what to make (found: {said})")
+check(any("You've done this" in p and "times in your last 8 moves." in p for p in PROMPTS),
+      "the plain count of what he's been doing is still there")
+check(any("Words you've been using a lot lately: river" in p for p in PROMPTS), "so are the words he's leaning on, as a fact")
+s["location"], s["mood"] = "nest", 0
+
+print("6. when he means the synth, he plays the synth")
 PLAYED = []
 c.do_synth = lambda target, s: PLAYED.append("synth") or "patched the modular synth"
 c.do_music = lambda target, s: PLAYED.append("song") or "made a song"
