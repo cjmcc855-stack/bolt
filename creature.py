@@ -988,13 +988,30 @@ def render_wav(notes, path, bpm=110, sr=22050):
         w.writeframes(bytes(frames))
 
 
+def numbered_title(title, s):
+    """A title he's already used gets the next number ('Eerie Echoes 2'), like a sequel, so no two songs share one."""
+    taken = {t.lower() for t in s["songs"]}
+    for f in os.listdir(TUNES) if os.path.isdir(TUNES) else []:
+        try:
+            with open(os.path.join(TUNES, f), encoding="utf-8") as fh:
+                taken.add(str(json.load(fh).get("title") or "").lower())
+        except (OSError, ValueError, AttributeError):
+            pass                                           # not a recipe, or a broken one
+    if title.lower() not in taken:
+        return title
+    n = 2
+    while f"{title} {n}".lower() in taken:
+        n += 1
+    return f"{title} {n}"
+
+
 def do_music(subject, s):
     lvl = min(10, skill_level(s, "songwriting"))
     lessons = "; ".join(list(dict.fromkeys(s["notebooks"].get("music", [])[-10:] + relevant_notes(s, text=subject, n=3))))
     lvl = min(10, lvl + know_levels(s, "make_music"))
     data = parse_json(call_llm(
         f"You're making a little synth tune about: {subject}. Your synth plays one note at a time. "
-        f"Songs you've already made: {', '.join(s['songs'][-12:]) or 'none'}. "
+        f"Songs you've already made: {', '.join(list(dict.fromkeys(reversed(s['songs'])))[:12][::-1]) or 'none'}. "
         + (f"Words you've been using a lot lately: {', '.join(overused_words(s))}. " if overused_words(s) else "")
         + (f"What you know that could help this song: {lessons}. " if lessons else "")
         + f"Your songwriting skill is level {lvl}. "
@@ -1009,7 +1026,7 @@ def do_music(subject, s):
     except (TypeError, ValueError):
         bpm = 110
     os.makedirs("songs", exist_ok=True)
-    title = plain_title(s, str(data.get("title") or subject), subject)[:40]
+    title = numbered_title(plain_title(s, str(data.get("title") or subject), subject)[:40], s)
     s["songs"] = (s["songs"] + [title])[-40:]
     stem = f"{s['tick']:05d}_{re.sub(r'[^a-z0-9]+', '_', title.lower())}"
     path = f"songs/{stem}.wav"

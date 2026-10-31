@@ -6,7 +6,7 @@ habits_test.py - checks three of Bolt's habits:
   - ruts: getting fed up with something sinks in every time, and he's told plainly when a streak feels bad
   - roosting: at night he flies home and sleeps, with no model calls, until a human wakes him
   - songs: only the newest are kept as audio; older ones play back byte-identical from their recipes,
-    and his early songs (no recipe) are never touched
+    and his early songs (no recipe) are never touched; a title he's already used gets the next number
   - synth: when his thought is about the synth but he picks the song action at his nest, he plays the synth
 
     python tests/habits_test.py [path/to/bolt_folder]
@@ -55,7 +55,7 @@ def brain(prompt, json_mode=True, temp=0.9, **kw):
         return SAY["reply"]
     if "little synth tune" in prompt:
         TUNE["n"] += 1
-        return json.dumps({"title": f"tune {TUNE['n']}", "scale": "A minor", "bpm": 100 + TUNE["n"],
+        return json.dumps({"title": TUNE.get("title") or f"tune {TUNE['n']}", "scale": "A minor", "bpm": 100 + TUNE["n"],
                            "notes": [f"{'CDEFGAB'[(TUNE['n'] + i) % 7]}4:0.5" for i in range(8)]})
     if '"action"' in prompt:
         return json.dumps(DECIDE)
@@ -180,6 +180,20 @@ if c.synth is not None:
         orig = f.read()
     os.remove("songs/00099_test_patch.wav")
     check(c.render_song("00099_test_patch.wav") == orig, "a synth song plays back byte-identical from its patch")
+
+print("4b. no two songs share a title")
+TUNE["title"] = "Eerie Echoes"
+s["songs"] = ["Eerie Echoes", "Old Tune", "Eerie Echoes"]
+PROMPTS.clear()
+first = c.do_music("the garage", s)
+second = c.do_music("the garage", s)
+check("'Eerie Echoes 2'" in first and "'Eerie Echoes 3'" in second, "a title he's used gets the next number")
+check(any("already made: Old Tune, Eerie Echoes." in p for p in PROMPTS), "the titles he's used are listed once each")
+TUNE["title"] = "Lake Song"
+c.do_music("the lake", s)
+s["songs"] = []                                     # long forgotten from his recent list, but its recipe is in tunes/
+check("'Lake Song 2'" in c.do_music("the lake", s), "it counts every song he's ever made, not just recent ones")
+TUNE.pop("title")
 
 print("5. he's told facts, never how to feel or what to make")
 STEER = ["Repetition gets boring", "repetitive things are -1", "nostalgic", "won't feel any different", "Use it",
