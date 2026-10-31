@@ -381,6 +381,45 @@ check(c.plain_title(s, "涟漪", "lake") == "lake", "nothing left: the subject i
 s["words"].append("さくら")
 check(c.plain_title(s, "Spring さくら", "lake") == "Spring さくら", "a word he picked up stays")
 
+print("14. Caelan can leave a gift for Spike")
+s["outbox"], s["placed"] = [], {}
+own = c.LocalTown()
+with open(c.PLACEMENTS, "w", encoding="utf-8") as f:
+    f.write("garage|a mini pumpkin|Caelan|spike\nnest|a witch hat|Caelan\n")
+own.take_hidden(s)
+check(s["placed"] == {"nest": ["a witch hat"]} and s.get("for_others") == ["garage|a mini pumpkin|Caelan|spike"],
+      "with the shared town away, Spike's gift waits; Bolt's is hidden in his own town")
+c.clear_pending([c.PLACEMENTS])                    # that step saved, so its placements are done
+world = c.WorldTown.__new__(c.WorldTown)
+world.seen, world.wc = {}, type("Up", (), {"online": True})()   # the town is answering
+with open(c.PLACEMENTS, "w", encoding="utf-8") as f:
+    f.write("fir|a crested cape|Caelan|Spike\nlake|a caramel apple|Caelan\n")
+world.take_hidden(s)
+sent = {b["body"]["item"]: b["body"] for b in s["outbox"]}
+check(sent.get("a mini pumpkin", {}).get("for") == "spike" and "for_others" not in s
+      and [b["body"]["item"] for b in s["outbox"]].count("a mini pumpkin") == 1,
+      "once the town is back, the waiting one goes out reserved for Spike")
+check(sent.get("a crested cape", {}).get("place") == "fir", "it can go to Spike's fir too")
+check(sent.get("a caramel apple", {}).get("for") == "bolt", "Bolt's own gifts are still for Bolt")
+for e in s["outbox"]:
+    world.on_reply(s, e, {"ok": False, "reason": "limit", "message": "Too many hides today."})
+check(s["placed"].get("lake") == ["a caramel apple"] and "a mini pumpkin" not in str(s["placed"]),
+      "if the town says no, Bolt's gift stays in his own town but Spike's never becomes his")
+s["outbox"], s["placed"] = [], {}
+
+print("15. on Halloween he knows it, and the town is decorated")
+real_holiday = c.holiday
+c.holiday = lambda: c.HOLIDAYS[(10, 31)]
+check("jack-o'-lantern" in c.place_desc("garage"), "places are decorated")
+check(any(c.pick_event("diner_roof") in c.HOLIDAYS[(10, 31)][2]["diner_roof"] for _ in range(40)), "with holiday sights")
+PROMPTS.clear()
+s = c.run_tick(s)
+decision = next((p for p in PROMPTS if '"action"' in p), "")
+check("Today is Halloween." in decision, "his turn knows it's Halloween")
+c.holiday = lambda: None
+check("jack-o'-lantern" not in c.place_desc("garage"), "and the decorations come down after")
+c.holiday = real_holiday
+
 os.chdir("/")
 shutil.rmtree(WORK, ignore_errors=True)
 print(f"\nPROBLEMS: {len(PROBLEMS)}")

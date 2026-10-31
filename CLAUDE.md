@@ -80,6 +80,11 @@ next to the code and are git-ignored.
   the plain fact that it's there and doesn't run; nothing tells him to fix it. Examining it finds one problem per
   look; `build` fixes it where it sits; `take_apart` strips it for parts (never at the old barn). Rides
   (`RIDES`) pick the cheapest working machine for a trip.
+- **Holidays:** `HOLIDAYS` (Halloween now) decorates place descriptions, adds holiday sights to `pick_event`,
+  tells his turns and replies "Today is …", and the world page draws pumpkins and bats. Facts and scenery only.
+- **Gifts for other creatures:** a `placements.txt` line `place|item|by|spike` is hidden in the shared town for
+  that creature (`for`), also at shared-town places like Spike's fir. While the town is away it waits in
+  `s["for_others"]`; if the town refuses it, it's noted in the diary and never becomes Bolt's.
 - **Songs:** make_music saves its recipe in `tunes/`, synth patches in `patches/`. The newest 40 songs stay
   as audio; older ones are rebuilt byte-identical when played (`render_song`, `prune_songs`).
 - **Who's around:** after each look at the shared town, `notice_company` notes arrivals, departures and

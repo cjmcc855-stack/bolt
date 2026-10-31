@@ -121,7 +121,9 @@ OTHER_EVENTS = {
 def place_desc(loc):
     """What a place is like. Works for shared-town places too, and anywhere unknown, so a turn never breaks
     because the shared town left him somewhere his own town doesn't have."""
-    return PLACES.get(loc) or OTHER_PLACES.get(loc) or "Somewhere you don't know well yet."
+    hol = holiday()
+    decor = f" {hol[1][loc]}" if hol and loc in hol[1] else ""
+    return (PLACES.get(loc) or OTHER_PLACES.get(loc) or "Somewhere you don't know well yet.") + decor
 
 
 def callable_place(place):
@@ -2286,6 +2288,38 @@ def season():
     return "winter" if m in (12, 1, 2) else "spring" if m in (3, 4, 5) else "summer" if m in (6, 7, 8) else "fall"
 
 
+HOLIDAYS = {   # (month, day): (name, how places are decorated, holiday sights). Facts and scenery only.
+    (10, 31): ("Halloween",
+               {"nest": "Caelan hung a tiny paper bat from the branch over your nest.",
+                "junkyard": "Someone propped a jack-o'-lantern on the crushed car stack.",
+                "rail_yard": "A scarecrow in a conductor's hat leans on the signal post.",
+                "creek": "A plastic skeleton sits on a rock with its feet in the water.",
+                "garage": "Paper bats hang from the garage door and a jack-o'-lantern sits on the workbench.",
+                "diner_roof": "The diner has orange lights strung along the roof edge and pumpkins on the steps.",
+                "ambulance_station": "The crew taped a cartoon ghost to the bay door.",
+                "drift_lot": "Somebody painted a pumpkin face on a stack of old tires.",
+                "lake": "A little rowboat at the dock is full of pumpkins.",
+                "shed": "A jack-o'-lantern with a welded steel grin glows on the shed bench.",
+                "mountain_trail": "Someone tied an orange ribbon and a tiny ghost to the trail sign.",
+                "old_barn": "A row of carved pumpkins lines the old barn's doorway.",
+                "machine_shop": "Somebody cut a bat out of sheet metal and hung it over the lathe.",
+                "summit": "Someone left a small pumpkin by the summit register."},
+               {"junkyard": ["kids in costumes cut through the junkyard, shining flashlights"],
+                "diner_roof": ["trick-or-treaters line up at the diner for free cocoa", "a kid dressed as a crow points up at you"],
+                "garage": ["a jack-o'-lantern flickers on the workbench"],
+                "lake": ["a paper lantern shaped like a pumpkin bobs at the dock"],
+                "nest": ["the paper bat over your nest twists in the wind"],
+                "rail_yard": ["the train crew hung a pumpkin on the front of the engine"],
+                "creek": ["the skeleton on the rock has a leaf stuck to its skull"],
+                "old_barn": ["the carved pumpkins in the barn doorway glow orange"]}),
+}
+
+
+def holiday():
+    """Today's holiday as (name, decorations, sights), or None."""
+    return HOLIDAYS.get((datetime.now().month, datetime.now().day))
+
+
 def marmots_awake():
     return datetime.now().month in (5, 6, 7, 8)       # high-mountain marmots sleep most of the year
 
@@ -2305,6 +2339,9 @@ SEASON_EVENTS = {
 
 def pick_event(loc):
     pool = list(EVENTS.get(loc) or OTHER_EVENTS.get(loc) or ["it's quiet"]) + SEASON_EVENTS.get(season(), {}).get(loc, [])
+    hol = holiday()
+    if hol:
+        pool += hol[2].get(loc, []) * 2                   # holiday sights come up often that day
     if not marmots_awake():
         pool = [e for e in pool if "marmot" not in e]
         if loc in ("mountain_trail", "summit"):
@@ -2457,8 +2494,10 @@ class LocalTown:
     def take_hidden(self, s):
         """Things people hid around town since his last turn (world page or !leave)."""
         for line in take_lines(PLACEMENTS):
-            place, item, who = (line.split("|") + ["", ""])[:3]
-            if place in PLACES and item.strip():
+            place, item, who, fr = (line.split("|") + ["", "", ""])[:4]
+            if fr.strip().lower() not in ("", "bolt"):        # for another creature: only the shared town can deliver it
+                s.setdefault("for_others", []).append(line)
+            elif place in PLACES and item.strip():
                 s["placed"].setdefault(place, []).append(item.strip() if not who or who == HUMAN else f"{who}::{item.strip()}")
 
     def finds_here(self, s, loc):
@@ -2589,12 +2628,12 @@ class WorldTown(LocalTown):
     def take_hidden(self, s):
         """A human's !leave (or the world page) becomes a hide in the shared town, kept for Bolt when it's
         from his human. If the town turns it down, it goes back into his own town (on_reply), so it's never lost."""
-        for line in take_lines(PLACEMENTS):
-            place, item, who = (line.split("|") + ["", ""])[:3]
-            item, who = clip(item.strip(), 60), (who.strip() or HUMAN)[:32]
-            if place in PLACES and item:
-                queue_action(s, "hide", note={"place": place, "line": item if who == HUMAN else f"{who}::{item}"},
-                             place=place, item=item, by=who, **{"for": "bolt"})
+        for line in s.pop("for_others", []) + take_lines(PLACEMENTS):
+            place, item, who, fr = (line.split("|") + ["", "", ""])[:4]
+            item, who, fr = clip(item.strip(), 60), (who.strip() or HUMAN)[:32], (fr.strip().lower() or "bolt")[:32]
+            if (place in PLACES or (fr != "bolt" and place in self.extra_places())) and item:
+                queue_action(s, "hide", note={"place": place, "line": item if who == HUMAN else f"{who}::{item}", "for": fr},
+                             place=place, item=item, by=who, **{"for": fr})
 
     def finds_here(self, s, loc):
         return super().finds_here(s, loc)                  # things left in his own town before it was shared
@@ -2655,7 +2694,10 @@ class WorldTown(LocalTown):
         body, note = entry["body"], entry.get("note") or {}
         if reply is not None and reply.get("ok"):
             return
-        if body["action"] == "hide":                       # refused or given up: keep it in his own town instead
+        if body["action"] == "hide" and body.get("for", "bolt") != "bolt":   # it was never his: just say so
+            diary(f"**{now()}** The town didn't take {body['item']} for {body['for']}: "
+                  f"{(reply or {}).get('message') or 'no answer'}\n")
+        elif body["action"] == "hide":                     # refused or given up: keep it in his own town instead
             s["placed"].setdefault(note.get("place", body["place"]), []).append(note.get("line", body["item"]))
         elif body["action"] == "go" and reply is not None and note.get("back") and s["location"] == body["to"]:
             s["location"] = note["back"]                   # the shared town said no: he's back where he was
@@ -3096,6 +3138,7 @@ def compose_reply(s, heard, creatures, loc, event, gifts, ate):
     crutch = overused_words(s)
     reply = call_llm(
         f"Right now you are AT the {loc} ({place_desc(loc)}). {event}. Mood {s['mood']}/5, energy {s['energy']}/100.\n"
+        + (f"Today is {holiday()[0]}.\n" if holiday() else "")
         + (f"Here at the {loc} with you right now: {company(here)}.\n" if here else "")
         + fellows
         + f"Who you are: {s['likes']}\n"
@@ -3355,7 +3398,7 @@ def tick(s):
     awake_here = [c["name"] for c in TOWN.here(loc) or [] if c["state"] == "awake"]
     talk_option = (f"talk_to (target = {' or '.join(awake_here)}, here with you: start a conversation, say whatever's "
                    f"on your mind), " if awake_here else "")
-    prompt = f"""It's {datetime.now().strftime('%B')} ({season()}), {tod}. Weather: {sky}. You're at the {loc}: {place_desc(loc)}
+    prompt = f"""It's {datetime.now().strftime('%B')} ({season()}), {tod}.{" Today is " + holiday()[0] + "." if holiday() else ""} Weather: {sky}. You're at the {loc}: {place_desc(loc)}
 Right now: {event}.
 {town_note}
 {"You just got gifts: " + "; ".join(gifts) + "." if gifts else ""}{(" You picked up and stashed: " + ", ".join(picked) + ".") if picked else ""}
@@ -3740,6 +3783,7 @@ class WorldHandler(BaseHTTPRequestHandler):
             out["asleep"] = bool(st.get("asleep_until"))
             out["temps"] = temp_summary()
             out["season"] = season()
+            out["holiday"] = (holiday() or [None])[0]
             out["memory_count"], out["memory_highlights"] = book_overview()
             try:
                 with open(HOARD_FILE, encoding="utf-8") as f:
